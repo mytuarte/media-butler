@@ -1,28 +1,41 @@
-import os
+import asyncio
+import threading
 
-from flask import Flask, request
-from dotenv import load_dotenv
+from flask import Flask
 
-load_dotenv("config/.env")
+from services.discord_service import DiscordService
+from services.notification_service import NotificationService
 
 app = Flask(__name__)
 
+discord_service = DiscordService()
+notification_service = NotificationService(discord_service)
 
-@app.route("/", methods=["GET"])
+
+def start_discord():
+    asyncio.run(discord_service.start())
+
+
+@app.get("/")
 def home():
-    return "Media Butler is running."
+    return "Media Butler is running!"
 
 
-@app.route("/radarr", methods=["POST"])
-def radarr():
-    data = request.json
+@app.get("/test")
+def test():
+    asyncio.run(notification_service.send_test_notification())
+    return "Test notification sent!"
 
-    print("========== RADARR WEBHOOK ==========")
-    print(data)
-    print("====================================")
 
-    return "", 200
+def main():
+    discord_thread = threading.Thread(
+        target=start_discord,
+        daemon=True,
+    )
+    discord_thread.start()
+
+    app.run(host="0.0.0.0", port=5000)
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    main()

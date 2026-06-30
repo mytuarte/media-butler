@@ -9,11 +9,18 @@ class DiscordService:
         intents = discord.Intents.default()
         self.client = discord.Client(intents=intents)
 
+    async def start(self):
+        await self.client.start(Config.DISCORD_TOKEN)
+
     async def send_movie_notification(
         self,
-        channel: discord.TextChannel,
         movie: MovieNotification,
     ):
+        channel = self.client.get_channel(Config.DISCORD_CHANNEL_ID)
+
+        if channel is None:
+            raise RuntimeError("Discord channel not found.")
+
         embed = discord.Embed(
             title=f"🎬 {movie.title} ({movie.year})",
             description=f"**{movie.status}**",
