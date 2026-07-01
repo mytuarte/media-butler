@@ -1,3 +1,5 @@
+import logging
+
 import discord
 
 from config import Config
@@ -6,6 +8,8 @@ from models.notification import MovieNotification
 
 class DiscordService:
     def __init__(self):
+        logging.basicConfig(level=logging.DEBUG)
+        
         intents = discord.Intents.default()
         self.client = discord.Client(intents=intents)
         
@@ -18,7 +22,7 @@ class DiscordService:
         print("Calling client.start()...")
         await self.client.start(Config.DISCORD_TOKEN)
         print("client.start() returned")
-        
+
     async def send_movie_notification(
         self,
         movie: MovieNotification,
