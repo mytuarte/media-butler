@@ -21,3 +21,14 @@ class OverseerrService:
             f"{Config.OVERSEERR_URL}/api/v1/request",
             headers=self.headers,
         )
+
+    def get_requester(self, tmdb_id):
+        requests = self.get_requests()
+
+        for request in requests["results"]:
+            media = request.get("media", {})
+
+            if media.get("tmdbId") == tmdb_id:
+                return request["requestedBy"]["displayName"]
+
+        return "Unknown"
