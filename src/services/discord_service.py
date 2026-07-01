@@ -14,6 +14,7 @@ class DiscordService:
             print(f"Discord connected as {self.client.user}")
 
     async def start(self):
+        print(f"Discord token loaded: {Config.DISCORD_TOKEN is not None}")
         await self.client.start(Config.DISCORD_TOKEN)
 
     async def send_movie_notification(
