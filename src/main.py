@@ -2,7 +2,7 @@ import asyncio
 import threading
 import traceback
 
-from flask import Flask
+from flask import Flask, jsonify
 
 from services.discord_service import DiscordService
 from services.notification_service import NotificationService
@@ -26,6 +26,17 @@ def home():
     return "Media Butler is running!"
 
 
+@app.get("/health")
+def health():
+    return jsonify(
+        {
+            "status": "healthy",
+            "discord_connected": discord_service.client.is_ready(),
+            "version": "0.1.0",
+        }
+    )
+
+
 @app.get("/test")
 def test():
     future = asyncio.run_coroutine_threadsafe(
@@ -45,7 +56,10 @@ def main():
     )
     discord_thread.start()
 
-    app.run(host="0.0.0.0", port=5000)
+    app.run(
+        host="0.0.0.0",
+        port=5000,
+    )
 
 
 if __name__ == "__main__":
