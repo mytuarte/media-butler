@@ -8,6 +8,10 @@ class DiscordService:
     def __init__(self):
         intents = discord.Intents.default()
         self.client = discord.Client(intents=intents)
+        
+        @self.client.event
+        async def on_ready():
+            print(f"Discord connected as {self.client.user}")
 
     async def start(self):
         await self.client.start(Config.DISCORD_TOKEN)
