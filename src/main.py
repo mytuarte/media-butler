@@ -1,5 +1,6 @@
 import asyncio
 import threading
+import traceback
 
 from flask import Flask
 
@@ -11,8 +12,6 @@ app = Flask(__name__)
 discord_service = DiscordService()
 notification_service = NotificationService(discord_service)
 
-
-import traceback
 
 def start_discord():
     print("Starting Discord thread...")
@@ -29,7 +28,13 @@ def home():
 
 @app.get("/test")
 def test():
-    asyncio.run(notification_service.send_test_notification())
+    future = asyncio.run_coroutine_threadsafe(
+        notification_service.send_test_notification(),
+        discord_service.client.loop,
+    )
+
+    future.result(timeout=10)
+
     return "Test notification sent!"
 
 
