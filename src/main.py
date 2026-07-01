@@ -15,6 +15,7 @@ notification_service = NotificationService(discord_service)
 import traceback
 
 def start_discord():
+    print("Starting Discord thread...")
     try:
         asyncio.run(discord_service.start())
     except Exception:
