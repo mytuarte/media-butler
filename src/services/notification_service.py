@@ -6,6 +6,9 @@ class NotificationService:
     def __init__(self, discord_service: DiscordService):
         self.discord_service = discord_service
 
+    async def send_movie_notification(self, movie: MovieNotification):
+        await self.discord_service.send_movie_notification(movie)
+
     async def send_test_notification(self):
         movie = MovieNotification(
             title="The Matrix",
@@ -14,4 +17,4 @@ class NotificationService:
             quality="4K BluRay",
         )
 
-        await self.discord_service.send_movie_notification(movie)
+        await self.send_movie_notification(movie)

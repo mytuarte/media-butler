@@ -6,11 +6,13 @@ from flask import Flask, jsonify, request
 
 from services.discord_service import DiscordService
 from services.notification_service import NotificationService
+from services.radarr_service import RadarrService
 
 app = Flask(__name__)
 
 discord_service = DiscordService()
 notification_service = NotificationService(discord_service)
+radarr_service = RadarrService()
 
 
 def start_discord():
@@ -56,6 +58,15 @@ def radarr():
     print("========== RADARR WEBHOOK ==========", flush=True)
     print(payload, flush=True)
     print("===================================", flush=True)
+
+    notification = radarr_service.parse_notification(payload)
+
+    future = asyncio.run_coroutine_threadsafe(
+        notification_service.send_movie_notification(notification),
+        discord_service.client.loop,
+    )
+
+    future.result(timeout=10)
 
     return jsonify({"success": True})
 
