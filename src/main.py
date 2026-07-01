@@ -2,7 +2,7 @@ import asyncio
 import threading
 import traceback
 
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 
 from services.discord_service import DiscordService
 from services.notification_service import NotificationService
@@ -47,6 +47,17 @@ def test():
     future.result(timeout=10)
 
     return "Test notification sent!"
+
+
+@app.post("/radarr")
+def radarr():
+    payload = request.json
+
+    print("========== RADARR WEBHOOK ==========")
+    print(payload)
+    print("===================================")
+
+    return jsonify({"success": True})
 
 
 def main():
