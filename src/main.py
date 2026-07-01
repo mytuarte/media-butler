@@ -12,8 +12,13 @@ discord_service = DiscordService()
 notification_service = NotificationService(discord_service)
 
 
+import traceback
+
 def start_discord():
-    asyncio.run(discord_service.start())
+    try:
+        asyncio.run(discord_service.start())
+    except Exception:
+        traceback.print_exc()
 
 
 @app.get("/")
