@@ -53,9 +53,9 @@ def test():
 def radarr():
     payload = request.json
 
-    print("========== RADARR WEBHOOK ==========")
-    print(payload)
-    print("===================================")
+    print("========== RADARR WEBHOOK ==========", flush=True)
+    print(payload, flush=True)
+    print("===================================", flush=True)
 
     return jsonify({"success": True})
 
