@@ -42,6 +42,9 @@ def health():
 
 
 @app.get("/overseerr-test")
+@app.get("/overseerr-requests")
+def overseerr_requests():
+    return jsonify(overseerr_service.get_requests())
 def overseerr_test():
     return jsonify(overseerr_service.test_connection())
 
