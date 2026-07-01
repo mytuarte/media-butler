@@ -7,12 +7,14 @@ from flask import Flask, jsonify, request
 from services.discord_service import DiscordService
 from services.notification_service import NotificationService
 from services.radarr_service import RadarrService
+from services.overseerr_service import OverseerrService
 
 app = Flask(__name__)
 
 discord_service = DiscordService()
 notification_service = NotificationService(discord_service)
 radarr_service = RadarrService()
+overseerr_service = OverseerrService()
 
 
 def start_discord():
@@ -37,6 +39,11 @@ def health():
             "version": "0.1.0",
         }
     )
+
+
+@app.get("/overseerr-test")
+def overseerr_test():
+    return jsonify(overseerr_service.test_connection())
 
 
 @app.get("/test")
