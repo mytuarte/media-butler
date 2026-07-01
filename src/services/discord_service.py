@@ -9,10 +9,10 @@ from models.notification import MovieNotification
 class DiscordService:
     def __init__(self):
         logging.basicConfig(level=logging.DEBUG)
-        
+
         intents = discord.Intents.default()
         self.client = discord.Client(intents=intents)
-        
+
         @self.client.event
         async def on_ready():
             print(f"Discord connected as {self.client.user}")
@@ -32,6 +32,13 @@ class DiscordService:
         if channel is None:
             raise RuntimeError("Discord channel not found.")
 
+        if isinstance(movie.requester, int):
+            requester = f"<@{movie.requester}>"
+        elif movie.requester:
+            requester = movie.requester
+        else:
+            requester = "Unknown"
+
         embed = discord.Embed(
             title=f"🎬 {movie.title} ({movie.year})",
             description=f"**{movie.status}**",
@@ -40,7 +47,7 @@ class DiscordService:
 
         embed.add_field(
             name="👤 Requested By",
-            value=movie.requester,
+            value=requester,
             inline=True,
         )
 

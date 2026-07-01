@@ -12,7 +12,7 @@ class Config:
     OVERSEERR_API_KEY = os.getenv("OVERSEERR_API_KEY")
 
     USERS = {
-        "Mike": int(os.getenv("MIKE_ID")),
-        "Derek": int(os.getenv("DEREK_ID")),
-        "Jay": int(os.getenv("JAY_ID")),
+        os.getenv("OVERSEERR_MIKE"): int(os.getenv("MIKE_ID")),
+        os.getenv("OVERSEERR_DEREK"): int(os.getenv("DEREK_ID")),
+        os.getenv("OVERSEERR_JAY"): int(os.getenv("JAY_ID")),
     }
