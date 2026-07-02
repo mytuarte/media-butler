@@ -4,6 +4,7 @@ import discord
 
 from config import Config
 from models.notification import MovieNotification
+from services.log_service import logger
 
 
 class DiscordService:
@@ -15,13 +16,15 @@ class DiscordService:
 
         @self.client.event
         async def on_ready():
-            print(f"Discord connected as {self.client.user}")
+            logger.info(f"Discord connected as {self.client.user}")
 
     async def start(self):
-        print(f"Discord token loaded: {Config.DISCORD_TOKEN is not None}")
-        print("Calling client.start()...")
+        logger.info(f"Discord token loaded: {Config.DISCORD_TOKEN is not None}")
+        logger.info("Connecting to Discord...")
+
         await self.client.start(Config.DISCORD_TOKEN)
-        print("client.start() returned")
+
+        logger.info("Discord client stopped.")
 
     async def send_movie_notification(
         self,
@@ -60,3 +63,5 @@ class DiscordService:
         embed.set_footer(text="Media Butler")
 
         await channel.send(embed=embed)
+
+        logger.info(f"Discord notification sent for '{movie.title}'.")

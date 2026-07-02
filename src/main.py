@@ -2,6 +2,7 @@ import asyncio
 import threading
 import traceback
 
+from services.log_service import logger
 from flask import Flask, jsonify, request
 
 from services.discord_service import DiscordService
@@ -63,13 +64,21 @@ def test():
 
 @app.post("/radarr")
 def radarr():
+    logger.info("Received Radarr webhook.")
+
     payload = request.json
 
-    print("========== RADARR WEBHOOK ==========", flush=True)
-    print(payload, flush=True)
-    print("===================================", flush=True)
+    movie = payload.get("movie", {})
+    logger.info(
+        f"Movie: {movie.get('title')} ({movie.get('year')}) "
+        f"TMDb: {movie.get('tmdbId')}"
+    )
 
     notification = radarr_service.parse_notification(payload)
+
+    logger.info(f"Requester resolved to: {notification.requester}")
+
+    logger.info("Sending Discord notification...")
 
     future = asyncio.run_coroutine_threadsafe(
         notification_service.send_movie_notification(notification),
@@ -78,7 +87,7 @@ def radarr():
 
     future.result(timeout=10)
 
-    return jsonify({"success": True})
+    logger.info("Discord notification sent successfully.")
 
 
 def main():
