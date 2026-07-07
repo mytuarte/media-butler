@@ -46,6 +46,8 @@ def health():
 @app.get("/overseerr-requests")
 def overseerr_requests():
     return jsonify(overseerr_service.get_requests())
+
+
 def overseerr_test():
     return jsonify(overseerr_service.test_connection())
 
@@ -68,12 +70,6 @@ def radarr():
 
     payload = request.json
 
-    event_type = payload.get("eventType", "")
-
-    if event_type != "Download":
-        logger.info(f"Ignoring Radarr event: {event_type}")
-        return jsonify({"success": True})
-
     movie = payload.get("movie", {})
     logger.info(
         f"Movie: {movie.get('title')} ({movie.get('year')}) "
@@ -94,6 +90,8 @@ def radarr():
     future.result(timeout=10)
 
     logger.info("Discord notification sent successfully.")
+
+    return "", 200
 
 
 def main():
