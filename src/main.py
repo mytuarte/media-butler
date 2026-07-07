@@ -68,6 +68,12 @@ def radarr():
 
     payload = request.json
 
+    event_type = payload.get("eventType", "")
+
+    if event_type != "Download":
+        logger.info(f"Ignoring Radarr event: {event_type}")
+        return jsonify({"success": True})
+
     movie = payload.get("movie", {})
     logger.info(
         f"Movie: {movie.get('title')} ({movie.get('year')}) "
