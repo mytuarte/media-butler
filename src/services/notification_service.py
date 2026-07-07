@@ -1,3 +1,4 @@
+from config import Config
 from models.notification import MovieNotification
 from services.discord_service import DiscordService
 
@@ -13,7 +14,7 @@ class NotificationService:
         movie = MovieNotification(
             title="The Matrix",
             year=1999,
-            requester="Mike",
+            requester=Config.USERS["michaelytuarte"],
             quality="4K BluRay",
         )
 
