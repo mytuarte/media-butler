@@ -31,6 +31,11 @@ class OverseerrService:
             if media.get("tmdbId") == tmdb_id:
                 display_name = request["requestedBy"]["displayName"]
 
+                print(f"Overseerr display name: '{display_name}'")
+                print(f"Config.USERS: {Config.USERS}")
+
                 return Config.USERS.get(display_name, display_name)
+
+        print(f"No Overseerr request found for TMDb ID {tmdb_id}")
 
         return "Unknown"
