@@ -29,6 +29,8 @@ class OverseerrService:
             media = request.get("media", {})
 
             if media.get("tmdbId") == tmdb_id:
-                return request["requestedBy"]["displayName"]
+                display_name = request["requestedBy"]["displayName"]
+
+                return Config.USERS.get(display_name, display_name)
 
         return "Unknown"

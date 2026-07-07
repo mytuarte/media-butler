@@ -62,6 +62,9 @@ class DiscordService:
 
         embed.set_footer(text="Media Butler")
 
-        await channel.send(embed=embed)
+        await channel.send(
+            content=requester if isinstance(movie.requester, int) else None,
+            embed=embed,
+)
 
         logger.info(f"Discord notification sent for '{movie.title}'.")
