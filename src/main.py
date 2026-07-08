@@ -94,6 +94,13 @@ def radarr():
     return "", 200
 
 
+@app.post("/sonarr")
+def sonarr():
+    logger.info("Received Sonarr webhook.")
+
+    return "", 200
+
+
 def main():
     discord_thread = threading.Thread(
         target=start_discord,
