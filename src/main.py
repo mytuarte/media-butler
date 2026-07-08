@@ -1,4 +1,5 @@
 import asyncio
+import json
 import threading
 import traceback
 
@@ -97,6 +98,11 @@ def radarr():
 @app.post("/sonarr")
 def sonarr():
     logger.info("Received Sonarr webhook.")
+
+    payload = request.json
+
+    logger.info("Sonarr payload:")
+    logger.info(json.dumps(payload, indent=2))
 
     return "", 200
 
