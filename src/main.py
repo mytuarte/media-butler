@@ -1,5 +1,4 @@
 import asyncio
-import json
 import threading
 import traceback
 
@@ -8,14 +7,16 @@ from flask import Flask, jsonify, request
 
 from services.discord_service import DiscordService
 from services.notification_service import NotificationService
-from services.radarr_service import RadarrService
 from services.overseerr_service import OverseerrService
+from services.radarr_service import RadarrService
+from services.sonarr_service import SonarrService
 
 app = Flask(__name__)
 
 discord_service = DiscordService()
 notification_service = NotificationService(discord_service)
 radarr_service = RadarrService()
+sonarr_service = SonarrService()
 overseerr_service = OverseerrService()
 
 
@@ -38,7 +39,7 @@ def health():
         {
             "status": "healthy",
             "discord_connected": discord_service.client.is_ready(),
-            "version": "0.1.0",
+            "version": "0.2.0",
         }
     )
 
@@ -101,8 +102,26 @@ def sonarr():
 
     payload = request.json
 
-    logger.info("Sonarr payload:")
-    logger.info(json.dumps(payload, indent=2))
+    series = payload.get("series", {})
+    logger.info(
+        f"Series: {series.get('title')} ({series.get('year')}) "
+        f"TMDb: {series.get('tmdbId')}"
+    )
+
+    notification = sonarr_service.parse_notification(payload)
+
+    logger.info(f"Requester resolved to: {notification.requester}")
+
+    logger.info("Sending Discord notification...")
+
+    future = asyncio.run_coroutine_threadsafe(
+        notification_service.send_movie_notification(notification),
+        discord_service.client.loop,
+    )
+
+    future.result(timeout=10)
+
+    logger.info("Discord notification sent successfully.")
 
     return "", 200
 
