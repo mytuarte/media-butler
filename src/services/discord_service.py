@@ -6,17 +6,27 @@ from config import Config
 from models.notification import MovieNotification
 from services.log_service import logger
 
+from services.command_service import CommandService
+
 
 class DiscordService:
     def __init__(self):
-        logging.basicConfig(level=logging.DEBUG)
+        logging.basicConfig(level=logging.INFO)
 
         intents = discord.Intents.default()
+        intents.message_content = True
+
         self.client = discord.Client(intents=intents)
+
+        self.command_service = CommandService()
 
         @self.client.event
         async def on_ready():
             logger.info(f"Discord connected as {self.client.user}")
+
+        @self.client.event
+        async def on_message(message):
+            await self.command_service.handle_message(message)
 
     async def start(self):
         logger.info(f"Discord token loaded: {Config.DISCORD_TOKEN is not None}")
