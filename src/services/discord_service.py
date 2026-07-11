@@ -26,6 +26,14 @@ class DiscordService:
 
         @self.client.event
         async def on_message(message):
+            # Ignore messages from bots (including ourselves)
+            if message.author.bot:
+                return
+
+            # Only process commands in the admin channel
+            if message.channel.id != Config.DISCORD_ADMIN_CHANNEL_ID:
+                return
+
             await self.command_service.handle_message(message)
 
     async def start(self):
@@ -75,6 +83,6 @@ class DiscordService:
         await channel.send(
             content=requester if isinstance(movie.requester, int) else None,
             embed=embed,
-)
+        )
 
         logger.info(f"Discord notification sent for '{movie.title}'.")

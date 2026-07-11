@@ -7,6 +7,7 @@ load_dotenv("config/.env")
 class Config:
     DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
     DISCORD_CHANNEL_ID = int(os.getenv("DISCORD_CHANNEL_ID"))
+    DISCORD_ADMIN_CHANNEL_ID = int(os.getenv("DISCORD_ADMIN_CHANNEL_ID"))
 
     OVERSEERR_URL = os.getenv("OVERSEERR_URL")
     OVERSEERR_API_KEY = os.getenv("OVERSEERR_API_KEY")
