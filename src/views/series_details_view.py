@@ -100,7 +100,10 @@ class SeriesDetailsView:
             name="📈 Progress",
             value=(
                 pipeline.progress
-                or f"{result.downloaded_episodes} / {result.total_episodes} Episodes"
+                or (
+                    f"{result.downloaded_episodes} / "
+                    f"{result.total_episodes} Episodes"
+                )
             ),
             inline=True,
         )
@@ -110,6 +113,24 @@ class SeriesDetailsView:
             value="Enabled" if result.monitored else "Disabled",
             inline=True,
         )
+
+        if result.download:
+            if result.download.state.lower() == "paused":
+                download_text = (
+                    f"⏸️ Paused\n"
+                    f"{result.download.progress}%"
+                )
+            else:
+                download_text = (
+                    f"{result.download.progress}%\n"
+                    f"ETA: {result.download.eta}"
+                )
+
+            embed.add_field(
+                name="📥 Download",
+                value=download_text,
+                inline=True,
+            )
 
         embed.add_field(
             name="🗂️ Seasons",

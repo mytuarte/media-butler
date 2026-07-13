@@ -32,6 +32,14 @@ class PipelineResolver:
                 requested_date=requested_date,
             )
 
+        if result.download is not None:
+            return PipelineResult(
+                state=pipeline_state.DOWNLOADING,
+                message=PipelineMessageBuilder.build_downloading_message(result),
+                requester=requester,
+                requested_date=requested_date,
+            )
+
         if overseerr and overseerr.media_status == 1:
             return PipelineResult(
                 state=pipeline_state.AWAITING_RELEASE,

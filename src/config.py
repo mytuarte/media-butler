@@ -1,4 +1,5 @@
 import os
+
 from dotenv import load_dotenv
 
 load_dotenv("config/.env")
@@ -21,6 +22,10 @@ class Config:
     # Overseerr
     OVERSEERR_URL = os.getenv("OVERSEERR_URL")
     OVERSEERR_API_KEY = os.getenv("OVERSEERR_API_KEY")
+
+    # SABnzbd
+    SABNZBD_URL = os.getenv("SABNZBD_URL")
+    SABNZBD_API_KEY = os.getenv("SABNZBD_API_KEY")
 
     # Discord Users
     USERS = {

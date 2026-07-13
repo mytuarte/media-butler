@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 
+from models.download_status import DownloadStatus
 from models.overseerr_request import OverseerrRequest
 from models.season_status import SeasonStatus
 
@@ -26,6 +27,9 @@ class MediaResult:
 
     # Overseerr
     overseerr: OverseerrRequest | None = None
+
+    # Download Queue
+    download: DownloadStatus | None = None
 
     # TV Progress
     downloaded_episodes: int = 0

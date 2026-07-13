@@ -64,6 +64,24 @@ class MovieDetailsView:
             inline=True,
         )
 
+        if result.download:
+            if result.download.state.lower() == "paused":
+                download_text = (
+                    f"⏸️ Paused\n"
+                    f"{result.download.progress}%"
+                )
+            else:
+                download_text = (
+                    f"{result.download.progress}%\n"
+                    f"ETA: {result.download.eta}"
+                )
+
+            embed.add_field(
+                name="📥 Download",
+                value=download_text,
+                inline=True,
+            )
+
         if pipeline.next_action:
             embed.add_field(
                 name="➡️ Next",

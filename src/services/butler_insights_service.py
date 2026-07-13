@@ -9,8 +9,10 @@ class ButlerInsightsService:
     def generate(result: MediaResult) -> list[ButlerInsight]:
         insights: list[ButlerInsight] = []
 
+        # Released movie with no download
         if (
-            not result.has_file
+            result.media_type == "movie"
+            and not result.has_file
             and result.release_date
             and result.release_date < date.today()
         ):

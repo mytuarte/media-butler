@@ -10,6 +10,10 @@ class PipelineMessageBuilder:
 
     @staticmethod
     def build_downloading_message(result: MediaResult) -> str:
+        # Movie currently downloading in SABnzbd
+        if result.download is not None:
+            return result.download.state
+
         active_season = next(
             (
                 season
