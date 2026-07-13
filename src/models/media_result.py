@@ -10,3 +10,5 @@ class MediaResult:
     has_file: bool
     monitored: bool
     quality: str
+    status: str
+    is_available: bool

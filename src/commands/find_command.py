@@ -1,6 +1,5 @@
 from services.media_service import MediaService
 from views.search_results_view import SearchResultsView
-
 from views.media_selection_view import MediaSelectionView
 
 
@@ -34,11 +33,12 @@ class FindCommand:
             )
             return
 
-        # For now, display the first result.
-        # Later we'll handle multiple results with buttons.
         embed = SearchResultsView.build(query, results)
 
         await message.channel.send(
             embed=embed,
-            view=MediaSelectionView(results),
+            view=MediaSelectionView(
+                results=results,
+                requesting_user_id=message.author.id,
+            ),
         )

@@ -67,6 +67,8 @@ class RadarrService:
                     has_file=movie.get("hasFile", False),
                     monitored=movie.get("monitored", False),
                     quality=quality,
+                    status=movie.get("status", "unknown"),
+                    is_available=movie.get("isAvailable", False),
                 )
             )
 
