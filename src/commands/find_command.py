@@ -1,6 +1,5 @@
-import discord
-
 from services.media_service import MediaService
+from views.search_results_view import SearchResultsView
 
 
 class FindCommand:
@@ -37,32 +36,6 @@ class FindCommand:
         # Later we'll handle multiple results with buttons.
         result = results[0]
 
-        status = "Downloaded" if result.has_file else "Missing"
-        monitored = "Yes" if result.monitored else "No"
-
-        embed = discord.Embed(
-            title=f"🎬 {result.title} ({result.year})",
-            color=0x2ECC71 if result.has_file else 0xE74C3C,
-        )
-
-        embed.add_field(
-            name="Status",
-            value=status,
-            inline=False,
-        )
-
-        embed.add_field(
-            name="Quality",
-            value=result.quality,
-            inline=False,
-        )
-
-        embed.add_field(
-            name="Monitored",
-            value=monitored,
-            inline=False,
-        )
-
-        embed.set_footer(text="Media Butler")
+        embed = SearchResultsView.build(result)
 
         await message.channel.send(embed=embed)
