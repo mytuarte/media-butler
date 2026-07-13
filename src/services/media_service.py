@@ -1,9 +1,18 @@
-from services.radarr_service import RadarrService
+from services.search.radarr_search_service import RadarrSearchService
+from services.search.sonarr_search_service import SonarrSearchService
 
 
 class MediaService:
     def __init__(self):
-        self.radarr = RadarrService()
+        self.search_services = [
+            RadarrSearchService(),
+            SonarrSearchService(),
+        ]
 
     def search(self, query: str):
-        return self.radarr.search(query)
+        results = []
+
+        for service in self.search_services:
+            results.extend(service.search(query))
+
+        return results

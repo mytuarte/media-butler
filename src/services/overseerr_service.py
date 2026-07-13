@@ -22,20 +22,27 @@ class OverseerrService:
             headers=self.headers,
         )
 
-    def get_requester(self, tmdb_id):
+    def get_request(self, tmdb_id):
         requests = self.get_requests()
 
         for request in requests["results"]:
             media = request.get("media", {})
 
             if media.get("tmdbId") == tmdb_id:
-                display_name = request["requestedBy"]["displayName"]
+                return request
 
-                print(f"Overseerr display name: '{display_name}'")
-                print(f"Config.USERS: {Config.USERS}")
+        return None
 
-                return Config.USERS.get(display_name, display_name)
+    def get_requester(self, tmdb_id):
+        request = self.get_request(tmdb_id)
 
-        print(f"No Overseerr request found for TMDb ID {tmdb_id}")
+        if request is None:
+            print(f"No Overseerr request found for TMDb ID {tmdb_id}")
+            return "Unknown"
 
-        return "Unknown"
+        display_name = request["requestedBy"]["displayName"]
+
+        print(f"Overseerr display name: '{display_name}'")
+        print(f"Config.USERS: {Config.USERS}")
+
+        return Config.USERS.get(display_name, display_name)

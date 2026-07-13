@@ -1,7 +1,7 @@
 import discord
 
 from models.media_result import MediaResult
-from views.movie_details_view import MovieDetailsView
+from views.details_view import DetailsView
 
 
 class MediaSelectionView(discord.ui.View):
@@ -33,7 +33,7 @@ class MediaSelectionView(discord.ui.View):
                 )
                 return
 
-            embed = MovieDetailsView.build(result)
+            embed = DetailsView.build(result)
 
             await interaction.response.edit_message(
                 embed=embed,

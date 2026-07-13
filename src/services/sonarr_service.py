@@ -1,6 +1,11 @@
 from models.notification import MovieNotification
 from services.overseerr_service import OverseerrService
 
+import json
+import requests
+
+from config import Config
+
 
 class SonarrService:
     def __init__(self):

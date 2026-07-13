@@ -2,22 +2,51 @@ import asyncio
 import threading
 import traceback
 
-from services.log_service import logger
-from flask import Flask, jsonify, request
+from flask import Flask
 
+from routes.debug_routes import (
+    debug_routes,
+    initialize as initialize_debug_routes,
+)
+from routes.system_routes import system_routes
+from routes.webhook_routes import (
+    initialize as initialize_webhook_routes,
+    webhook_routes,
+)
 from services.discord_service import DiscordService
 from services.notification_service import NotificationService
 from services.overseerr_service import OverseerrService
 from services.radarr_service import RadarrService
+from services.search.sonarr_search_service import SonarrSearchService
 from services.sonarr_service import SonarrService
 
 app = Flask(__name__)
+
+app.register_blueprint(system_routes)
 
 discord_service = DiscordService()
 notification_service = NotificationService(discord_service)
 radarr_service = RadarrService()
 sonarr_service = SonarrService()
+sonarr_search_service = SonarrSearchService()
 overseerr_service = OverseerrService()
+
+initialize_webhook_routes(
+    notification_service,
+    discord_service,
+    radarr_service,
+    sonarr_service,
+)
+
+initialize_debug_routes(
+    discord_service,
+    notification_service,
+    overseerr_service,
+    sonarr_search_service,
+)
+
+app.register_blueprint(webhook_routes)
+app.register_blueprint(debug_routes)
 
 
 def start_discord():
@@ -26,104 +55,6 @@ def start_discord():
         asyncio.run(discord_service.start())
     except Exception:
         traceback.print_exc()
-
-
-@app.get("/")
-def home():
-    return "Media Butler is running!"
-
-
-@app.get("/health")
-def health():
-    return jsonify(
-        {
-            "status": "healthy",
-            "discord_connected": discord_service.client.is_ready(),
-            "version": "0.2.0",
-        }
-    )
-
-
-@app.get("/overseerr-test")
-@app.get("/overseerr-requests")
-def overseerr_requests():
-    return jsonify(overseerr_service.get_requests())
-
-
-def overseerr_test():
-    return jsonify(overseerr_service.test_connection())
-
-
-@app.get("/test")
-def test():
-    future = asyncio.run_coroutine_threadsafe(
-        notification_service.send_test_notification(),
-        discord_service.client.loop,
-    )
-
-    future.result(timeout=10)
-
-    return "Test notification sent!"
-
-
-@app.post("/radarr")
-def radarr():
-    logger.info("Received Radarr webhook.")
-
-    payload = request.json
-
-    movie = payload.get("movie", {})
-    logger.info(
-        f"Movie: {movie.get('title')} ({movie.get('year')}) "
-        f"TMDb: {movie.get('tmdbId')}"
-    )
-
-    notification = radarr_service.parse_notification(payload)
-
-    logger.info(f"Requester resolved to: {notification.requester}")
-
-    logger.info("Sending Discord notification...")
-
-    future = asyncio.run_coroutine_threadsafe(
-        notification_service.send_movie_notification(notification),
-        discord_service.client.loop,
-    )
-
-    future.result(timeout=10)
-
-    logger.info("Discord notification sent successfully.")
-
-    return "", 200
-
-
-@app.post("/sonarr")
-def sonarr():
-    logger.info("Received Sonarr webhook.")
-
-    payload = request.json
-
-    series = payload.get("series", {})
-    logger.info(
-        f"Series: {series.get('title')} ({series.get('year')}) "
-        f"TMDb: {series.get('tmdbId')}"
-    )
-
-    notification = sonarr_service.parse_notification(payload)
-
-    logger.info(f"Requester resolved to: {notification.requester}")
-
-    logger.info("Sending Discord notification...")
-
-    future = asyncio.run_coroutine_threadsafe(
-        notification_service.send_movie_notification(notification),
-        discord_service.client.loop,
-    )
-
-    future.result(timeout=10)
-
-    logger.info("Discord notification sent successfully.")
-
-    return "", 200
 
 
 def main():

@@ -23,10 +23,18 @@ class SearchResultsView:
 
         for index, result in enumerate(shown_results, start=1):
             year = f" ({result.year})" if result.year else ""
-            lines.append(f"{index}. {result.title}{year}")
+
+            icon = "🎬"
+
+            if result.media_type == "series":
+                icon = "📺"
+
+            lines.append(
+                f"{index}. {icon} {result.title}{year}"
+            )
 
         embed = discord.Embed(
-            title="🎬 Search Results",
+            title="🔍 Search Results",
             description="\n".join(lines),
             color=discord.Color.blue(),
         )
@@ -38,7 +46,11 @@ class SearchResultsView:
             )
         else:
             count = len(results)
-            footer = f"Showing {count} result" if count == 1 else f"Showing {count} results"
+            footer = (
+                f"Showing {count} result"
+                if count == 1
+                else f"Showing {count} results"
+            )
 
         embed.set_footer(text=footer)
 
