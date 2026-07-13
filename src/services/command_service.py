@@ -1,3 +1,4 @@
+from commands.find_command import FindCommand
 from commands.help_command import HelpCommand
 from commands.ping_command import PingCommand
 from services.log_service import logger
@@ -13,6 +14,7 @@ class CommandService:
 
         # Register commands
         self.commands[PingCommand.COMMAND] = PingCommand()
+        self.commands[FindCommand.COMMAND] = FindCommand()
         self.commands[HelpCommand.COMMAND] = HelpCommand(self.commands)
 
     async def handle_message(self, message):
