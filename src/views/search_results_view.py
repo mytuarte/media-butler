@@ -13,34 +13,38 @@ class SearchResultsView:
     - Selection menus
     """
 
+    MAX_RESULTS = 10
+
     @staticmethod
-    def build(result: MediaResult) -> discord.Embed:
-        status = "Downloaded" if result.has_file else "Missing"
-        monitored = "Yes" if result.monitored else "No"
+    def build(query: str, results: list[MediaResult]) -> discord.Embed:
+        shown_results = results[: SearchResultsView.MAX_RESULTS]
 
         embed = discord.Embed(
-            title=f"🎬 {result.title} ({result.year})",
-            color=0x2ECC71 if result.has_file else 0xE74C3C,
+            title="🎬 Search Results",
+            description=f'Search results for **"{query}"**',
+            color=discord.Color.blue(),
         )
 
+        lines = []
+
+        for index, result in enumerate(shown_results, start=1):
+            year = f" ({result.year})" if result.year else ""
+            lines.append(f"**{index}.** {result.title}{year}")
+
         embed.add_field(
-            name="Status",
-            value=status,
+            name="Results",
+            value="\n".join(lines),
             inline=False,
         )
 
-        embed.add_field(
-            name="Quality",
-            value=result.quality,
-            inline=False,
-        )
+        if len(results) > SearchResultsView.MAX_RESULTS:
+            footer = (
+                f"Showing {SearchResultsView.MAX_RESULTS} "
+                f"of {len(results)} results."
+            )
+        else:
+            footer = f"Showing {len(results)} result(s)."
 
-        embed.add_field(
-            name="Monitored",
-            value=monitored,
-            inline=False,
-        )
-
-        embed.set_footer(text="Media Butler")
+        embed.set_footer(text=footer)
 
         return embed

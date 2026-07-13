@@ -34,8 +34,6 @@ class FindCommand:
 
         # For now, display the first result.
         # Later we'll handle multiple results with buttons.
-        result = results[0]
-
-        embed = SearchResultsView.build(result)
+        embed = SearchResultsView.build(query, results)
 
         await message.channel.send(embed=embed)
