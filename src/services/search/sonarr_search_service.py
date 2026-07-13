@@ -85,9 +85,8 @@ class SonarrSearchService(SearchService):
                     is_available=series.get("status") != "upcoming",
 
                     tmdb_id=series.get("tmdbId"),
-                    overseerr_status=None,
-                    overseerr_media_status=None,
-
+                    overseerr=None,
+                    
                     downloaded_episodes=downloaded_episodes,
                     total_episodes=total_episodes,
                     season_statuses=season_statuses,

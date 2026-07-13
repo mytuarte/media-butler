@@ -52,8 +52,7 @@ class RadarrSearchService(SearchService):
                     is_available=movie.get("isAvailable", False),
 
                     tmdb_id=movie.get("tmdbId"),
-                    overseerr_status=None,
-                    overseerr_media_status=None,
+                    overseerr=None,
                 )
             )
 
