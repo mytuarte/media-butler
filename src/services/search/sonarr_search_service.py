@@ -72,12 +72,6 @@ class SonarrSearchService(SearchService):
                     )
                 )
 
-            # ----- TEMPORARY DEBUG -----
-            print(
-                f"{series['title']} -> TMDb ID: {series.get('tmdbId')}"
-            )
-            # ---------------------------
-
             results.append(
                 MediaResult(
                     id=series["id"],
@@ -89,6 +83,11 @@ class SonarrSearchService(SearchService):
                     quality="Series",
                     status=series.get("status", "unknown"),
                     is_available=series.get("status") != "upcoming",
+
+                    tmdb_id=series.get("tmdbId"),
+                    overseerr_status=None,
+                    overseerr_media_status=None,
+
                     downloaded_episodes=downloaded_episodes,
                     total_episodes=total_episodes,
                     season_statuses=season_statuses,

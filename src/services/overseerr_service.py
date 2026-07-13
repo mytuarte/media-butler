@@ -1,5 +1,11 @@
+import json
+
 from config import Config
+from models.overseerr_request import OverseerrRequest
 from services.http_service import HttpService
+from services.overseerr_request_factory import (
+    OverseerrRequestFactory,
+)
 
 
 class OverseerrService:
@@ -22,27 +28,32 @@ class OverseerrService:
             headers=self.headers,
         )
 
-    def get_request(self, tmdb_id):
+    def get_request(self, tmdb_id) -> OverseerrRequest | None:
         requests = self.get_requests()
 
         for request in requests["results"]:
             media = request.get("media", {})
 
             if media.get("tmdbId") == tmdb_id:
-                return request
+                return OverseerrRequestFactory.from_api(
+                    request
+                )
 
         return None
 
-    def get_requester(self, tmdb_id):
+    def debug_request(self, tmdb_id):
         request = self.get_request(tmdb_id)
 
         if request is None:
-            print(f"No Overseerr request found for TMDb ID {tmdb_id}")
-            return "Unknown"
+            print(
+                f"No Overseerr request found for TMDb ID {tmdb_id}"
+            )
+            return None
 
-        display_name = request["requestedBy"]["displayName"]
+        print("\n" + "=" * 70)
+        print(f"TMDb ID: {tmdb_id}")
+        print("=" * 70)
+        print(json.dumps(request.raw, indent=4))
+        print("=" * 70 + "\n")
 
-        print(f"Overseerr display name: '{display_name}'")
-        print(f"Config.USERS: {Config.USERS}")
-
-        return Config.USERS.get(display_name, display_name)
+        return request

@@ -37,6 +37,26 @@ def initialize(
             overseerr_service.get_request(tmdb_id)
         )
 
+    @debug_routes.get("/debug/overseerr/request/<int:tmdb_id>/dump")
+    def overseerr_request_dump(tmdb_id):
+        request = overseerr_service.debug_request(tmdb_id)
+
+        if request is None:
+            return (
+                jsonify(
+                    {
+                        "error": "Request not found",
+                    }
+                ),
+                404,
+            )
+
+        return jsonify(
+            {
+                "message": "Request printed to console.",
+            }
+        )
+
     @debug_routes.get("/debug/test")
     def test():
         future = asyncio.run_coroutine_threadsafe(

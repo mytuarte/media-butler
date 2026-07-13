@@ -24,7 +24,16 @@ class Config:
 
     # Discord Users
     USERS = {
-        os.getenv("OVERSEERR_MIKE"): int(os.getenv("MIKE_ID")),
-        os.getenv("OVERSEERR_DEREK"): int(os.getenv("DEREK_ID")),
-        os.getenv("OVERSEERR_JAY"): int(os.getenv("JAY_ID")),
+        os.getenv("OVERSEERR_MIKE"): {
+            "name": "Mike",
+            "discord_id": int(os.getenv("MIKE_ID")),
+        },
+        os.getenv("OVERSEERR_DEREK"): {
+            "name": "Derek",
+            "discord_id": int(os.getenv("DEREK_ID")),
+        },
+        os.getenv("OVERSEERR_JAY"): {
+            "name": "Jay",
+            "discord_id": int(os.getenv("JAY_ID")),
+        },
     }

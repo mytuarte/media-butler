@@ -1,7 +1,7 @@
 import discord
 
 from models.media_result import MediaResult
-from models.series_status import SeriesStatus
+from services.pipeline.pipeline_resolver import PipelineResolver
 
 
 class SeriesDetailsView:
@@ -68,33 +68,59 @@ class SeriesDetailsView:
 
     @staticmethod
     def build(result: MediaResult) -> discord.Embed:
-        series_status = SeriesStatus.from_result(result)
+        pipeline = PipelineResolver.resolve(result)
 
         embed = discord.Embed(
             title=f"📺 {result.title} ({result.year})",
-            color=series_status.color,
+            color=pipeline.state.color,
         )
 
-        embed.add_field(
-            name="Status",
-            value=series_status.display,
-            inline=False,
+        embed.description = (
+            f"{pipeline.state.display}\n"
+            f"{pipeline.message}"
         )
 
+        if pipeline.requester:
+            embed.add_field(
+                name="👤 Requested By",
+                value=pipeline.requester,
+                inline=True,
+            )
+
+        if pipeline.requested_date:
+            embed.add_field(
+                name="📅 Requested",
+                value=pipeline.requested_date,
+                inline=True,
+            )
+
         embed.add_field(
-            name="Progress",
+            name="📈 Progress",
             value=(
-                f"{result.downloaded_episodes} / "
-                f"{result.total_episodes} Episodes"
+                pipeline.progress
+                or f"{result.downloaded_episodes} / {result.total_episodes} Episodes"
             ),
-            inline=False,
+            inline=True,
         )
 
         embed.add_field(
-            name="Seasons",
+            name="👁️ Monitoring",
+            value="Enabled" if result.monitored else "Disabled",
+            inline=True,
+        )
+
+        embed.add_field(
+            name="🗂️ Seasons",
             value=SeriesDetailsView._format_seasons(result),
             inline=False,
         )
+
+        if pipeline.next_action:
+            embed.add_field(
+                name="➡️ Next",
+                value=pipeline.next_action,
+                inline=False,
+            )
 
         embed.set_footer(text="Media Butler")
 
