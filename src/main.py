@@ -17,6 +17,7 @@ from services.discord_service import DiscordService
 from services.notification_service import NotificationService
 from services.overseerr_service import OverseerrService
 from services.radarr_service import RadarrService
+from services.registry import services
 from services.search.sonarr_search_service import SonarrSearchService
 from services.sonarr_service import SonarrService
 
@@ -24,25 +25,25 @@ app = Flask(__name__)
 
 app.register_blueprint(system_routes)
 
-discord_service = DiscordService()
-notification_service = NotificationService(discord_service)
-radarr_service = RadarrService()
-sonarr_service = SonarrService()
-sonarr_search_service = SonarrSearchService()
-overseerr_service = OverseerrService()
+services.discord = DiscordService()
+services.notification = NotificationService(services.discord)
+services.radarr = RadarrService()
+services.sonarr = SonarrService()
+services.sonarr_search = SonarrSearchService()
+services.overseerr = OverseerrService()
 
 initialize_webhook_routes(
-    notification_service,
-    discord_service,
-    radarr_service,
-    sonarr_service,
+    services.notification,
+    services.discord,
+    services.radarr,
+    services.sonarr,
 )
 
 initialize_debug_routes(
-    discord_service,
-    notification_service,
-    overseerr_service,
-    sonarr_search_service,
+    services.discord,
+    services.notification,
+    services.overseerr,
+    services.sonarr_search,
 )
 
 app.register_blueprint(webhook_routes)
@@ -52,7 +53,7 @@ app.register_blueprint(debug_routes)
 def start_discord():
     print("Starting Discord thread...")
     try:
-        asyncio.run(discord_service.start())
+        asyncio.run(services.discord.start())
     except Exception:
         traceback.print_exc()
 
