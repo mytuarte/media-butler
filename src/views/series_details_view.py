@@ -97,7 +97,7 @@ class SeriesDetailsView:
             )
 
         embed.add_field(
-            name="📈 Progress",
+            name="📺 Released",
             value=(
                 pipeline.progress
                 or (

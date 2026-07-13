@@ -37,8 +37,9 @@ class SonarrSearchService(SearchService):
                 0,
             )
 
+            # Use released episodes instead of total known episodes.
             total_episodes = statistics.get(
-                "totalEpisodeCount",
+                "episodeCount",
                 0,
             )
 
@@ -66,7 +67,7 @@ class SonarrSearchService(SearchService):
                             0,
                         ),
                         total_episodes=season_stats.get(
-                            "totalEpisodeCount",
+                            "episodeCount",
                             0,
                         ),
                     )
@@ -83,10 +84,8 @@ class SonarrSearchService(SearchService):
                     quality="Series",
                     status=series.get("status", "unknown"),
                     is_available=series.get("status") != "upcoming",
-
                     tmdb_id=series.get("tmdbId"),
                     overseerr=None,
-                    
                     downloaded_episodes=downloaded_episodes,
                     total_episodes=total_episodes,
                     season_statuses=season_statuses,

@@ -51,9 +51,12 @@ class SabnzbdClient:
     def get_download(
         self,
         media_result,
+        queue: dict | None = None,
     ) -> DownloadStatus | None:
-        queue = self.get_queue().get("queue", {})
-        slots = queue.get("slots", [])
+        if queue is None:
+            queue = self.get_queue()
+
+        slots = queue.get("queue", {}).get("slots", [])
 
         title = self._normalize(media_result.title)
 

@@ -30,8 +30,11 @@ class DiscordService:
             if message.author.bot:
                 return
 
-            # Only process commands in the admin channel
-            if message.channel.id != Config.DISCORD_ADMIN_CHANNEL_ID:
+            # Only process commands in approved channels
+            if message.channel.id not in {
+                Config.DISCORD_ADMIN_CHANNEL_ID,
+                Config.DISCORD_MEDIA_STATUS_CHANNEL_ID,
+            }:
                 return
 
             await self.command_service.handle_message(message)
@@ -86,3 +89,4 @@ class DiscordService:
         )
 
         logger.info(f"Discord notification sent for '{movie.title}'.")
+        

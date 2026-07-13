@@ -20,6 +20,16 @@ class MediaService:
         for service in self.search_services:
             results.extend(service.search(query))
 
+        results.sort(
+            key=lambda result: (
+                result.year or 0,
+                result.title.lower(),
+            ),
+            reverse=True,
+        )
+
+        queue = self.download_client.get_queue()
+
         for result in results:
             if result.tmdb_id is not None:
                 result.overseerr = self.overseerr.get_request(
@@ -27,7 +37,8 @@ class MediaService:
                 )
 
             result.download = self.download_client.get_download(
-                result
+                result,
+                queue,
             )
 
         return results

@@ -10,6 +10,9 @@ class Config:
     DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
     DISCORD_CHANNEL_ID = int(os.getenv("DISCORD_CHANNEL_ID"))
     DISCORD_ADMIN_CHANNEL_ID = int(os.getenv("DISCORD_ADMIN_CHANNEL_ID"))
+    DISCORD_MEDIA_STATUS_CHANNEL_ID = int(
+        os.getenv("DISCORD_MEDIA_STATUS_CHANNEL_ID")
+    )
 
     # Radarr
     RADARR_URL = os.getenv("RADARR_URL")
