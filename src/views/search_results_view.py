@@ -19,31 +19,26 @@ class SearchResultsView:
     def build(query: str, results: list[MediaResult]) -> discord.Embed:
         shown_results = results[: SearchResultsView.MAX_RESULTS]
 
-        embed = discord.Embed(
-            title="🎬 Search Results",
-            description=f'Search results for **"{query}"**',
-            color=discord.Color.blue(),
-        )
-
-        lines = []
+        lines = [f'**Search:** "{query}"', ""]
 
         for index, result in enumerate(shown_results, start=1):
             year = f" ({result.year})" if result.year else ""
-            lines.append(f"**{index}.** {result.title}{year}")
+            lines.append(f"{index}. {result.title}{year}")
 
-        embed.add_field(
-            name="Results",
-            value="\n".join(lines),
-            inline=False,
+        embed = discord.Embed(
+            title="🎬 Search Results",
+            description="\n".join(lines),
+            color=discord.Color.blue(),
         )
 
         if len(results) > SearchResultsView.MAX_RESULTS:
             footer = (
                 f"Showing {SearchResultsView.MAX_RESULTS} "
-                f"of {len(results)} results."
+                f"of {len(results)} results"
             )
         else:
-            footer = f"Showing {len(results)} result(s)."
+            count = len(results)
+            footer = f"Showing {count} result" if count == 1 else f"Showing {count} results"
 
         embed.set_footer(text=footer)
 
