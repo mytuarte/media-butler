@@ -1,6 +1,8 @@
 from services.media_service import MediaService
 from views.search_results_view import SearchResultsView
 
+from views.media_selection_view import MediaSelectionView
+
 
 class FindCommand:
     """
@@ -36,4 +38,7 @@ class FindCommand:
         # Later we'll handle multiple results with buttons.
         embed = SearchResultsView.build(query, results)
 
-        await message.channel.send(embed=embed)
+        await message.channel.send(
+            embed=embed,
+            view=MediaSelectionView(results),
+        )
