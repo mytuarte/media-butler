@@ -1,6 +1,7 @@
 import discord
 
 from models.media_result import MediaResult
+from services.butler_insights_service import ButlerInsightsService
 from services.pipeline.pipeline_resolver import PipelineResolver
 
 
@@ -69,6 +70,7 @@ class SeriesDetailsView:
     @staticmethod
     def build(result: MediaResult) -> discord.Embed:
         pipeline = PipelineResolver.resolve(result)
+        insights = ButlerInsightsService.generate(result)
 
         embed = discord.Embed(
             title=f"📺 {result.title} ({result.year})",
@@ -119,6 +121,16 @@ class SeriesDetailsView:
             embed.add_field(
                 name="➡️ Next",
                 value=pipeline.next_action,
+                inline=False,
+            )
+
+        if insights:
+            embed.add_field(
+                name="💡 Butler Insights",
+                value="\n".join(
+                    f"{insight.icon} {insight.message}"
+                    for insight in insights
+                ),
                 inline=False,
             )
 

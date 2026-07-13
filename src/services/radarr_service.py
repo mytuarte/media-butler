@@ -1,68 +1,38 @@
-import requests
+from models.notification import MovieNotification
+from services.overseerr_service import OverseerrService
 
 from config import Config
-from models.media_result import MediaResult
-from services.search.search_service import SearchService
+
+import requests
 
 
-class RadarrSearchService(SearchService):
-    def search(self, query: str) -> list[MediaResult]:
-        headers = {
-            "X-Api-Key": Config.RADARR_API_KEY,
-        }
+class RadarrService:
+    def __init__(self):
+        self.overseerr = OverseerrService()
 
-        response = requests.get(
-            f"{Config.RADARR_URL}/api/v3/movie",
-            headers=headers,
-            timeout=10,
+    def parse_notification(self, payload: dict) -> MovieNotification:
+        movie = payload["movie"]
+
+        tmdb_id = movie.get("tmdbId")
+
+        requester = self.overseerr.get_requester(tmdb_id)
+
+        quality = "Unknown"
+
+        movie_file = payload.get("movieFile")
+        if movie_file:
+            quality = (
+                movie_file.get("quality", {})
+                .get("quality", {})
+                .get("name", "Unknown")
+            )
+
+        return MovieNotification(
+            title=movie["title"],
+            year=movie["year"],
+            requester=requester,
+            quality=quality,
         )
-
-        response.raise_for_status()
-
-        movies = response.json()
-
-        query = query.lower()
-
-        results = []
-
-        for movie in movies:
-            if query not in movie["title"].lower():
-                continue
-
-            quality = "Unknown"
-
-            if movie.get("hasFile") and movie.get("movieFile"):
-                quality = (
-                    movie["movieFile"]
-                    .get("quality", {})
-                    .get("quality", {})
-                    .get("name", "Unknown")
-                )
-
-            release_date = (
-                movie.get("digitalRelease")
-                or movie.get("physicalRelease")
-                or movie.get("inCinemas")
-                or movie.get("minimumAvailability")
-            )
-
-            results.append(
-                MediaResult(
-                    id=movie["id"],
-                    media_type="movie",
-                    title=movie["title"],
-                    year=movie["year"],
-                    has_file=movie.get("hasFile", False),
-                    monitored=movie.get("monitored", False),
-                    quality=quality,
-                    status=movie.get("status", "unknown"),
-                    is_available=movie.get("isAvailable", False),
-                    tmdb_id=movie.get("tmdbId"),
-                    release_date=release_date,
-                )
-            )
-
-        return results
 
     def get_movies(self):
         headers = {

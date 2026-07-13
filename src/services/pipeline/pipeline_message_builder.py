@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from models.media_result import MediaResult
 
@@ -33,9 +33,7 @@ class PipelineMessageBuilder:
     @staticmethod
     def build_requested_message(result: MediaResult) -> str:
         if result.media_type == "movie":
-            return PipelineMessageBuilder._build_movie_release_message(
-                result
-            )
+            return "Request received."
 
         return "Waiting for Sonarr."
 
@@ -64,34 +62,37 @@ class PipelineMessageBuilder:
         if not result.release_date:
             return "Waiting for the official release."
 
-        try:
-            release = datetime.fromisoformat(
-                result.release_date.replace("Z", "+00:00")
-            ).date()
+        release = result.release_date
 
-            today = datetime.now(timezone.utc).date()
-            delta = (release - today).days
+        if isinstance(release, str):
+            try:
+                release = datetime.fromisoformat(
+                    release.replace("Z", "+00:00")
+                ).date()
+            except ValueError:
+                return "Waiting for the official release."
 
-            if delta > 1:
-                return (
-                    f"Releases in {delta} days "
-                    f"({release:%b %d, %Y})."
-                )
+        if not isinstance(release, date):
+            return "Waiting for the official release."
 
-            if delta == 1:
-                return "Releases tomorrow."
+        today = datetime.now(timezone.utc).date()
+        delta = (release - today).days
 
-            if delta == 0:
-                return "Releases today."
-
-            days = abs(delta)
-
-            if days == 1:
-                return "Released yesterday."
-
+        if delta > 1:
             return (
-                f"Released {days} days ago."
+                f"Releases in {delta} days "
+                f"({release:%b %d, %Y})."
             )
 
-        except ValueError:
-            return "Waiting for the official release."
+        if delta == 1:
+            return "Releases tomorrow."
+
+        if delta == 0:
+            return "Releases today."
+
+        days = abs(delta)
+
+        if days == 1:
+            return "Released yesterday."
+
+        return f"Released {days} days ago."

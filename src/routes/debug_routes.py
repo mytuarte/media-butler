@@ -2,6 +2,9 @@ import asyncio
 
 from flask import Blueprint, jsonify
 
+from views.movie_details_view import MovieDetailsView
+from services.scenario_service import ScenarioService
+
 debug_routes = Blueprint(
     "debug_routes",
     __name__,
@@ -67,3 +70,18 @@ def initialize(
         future.result(timeout=10)
 
         return "Test notification sent!"
+
+    @debug_routes.get("/debug/scenario/released-not-downloaded")
+    def released_not_downloaded():
+        result = ScenarioService.released_not_downloaded()
+
+        embed = MovieDetailsView.build(result)
+
+        future = asyncio.run_coroutine_threadsafe(
+            discord_service.send_embed(embed),
+            discord_service.client.loop,
+        )
+
+        future.result(timeout=10)
+
+        return "Scenario sent."
