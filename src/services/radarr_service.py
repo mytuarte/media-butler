@@ -1,7 +1,6 @@
+from config import Config
 from models.notification import MovieNotification
 from services.overseerr_service import OverseerrService
-
-from config import Config
 
 import requests
 
@@ -15,7 +14,11 @@ class RadarrService:
 
         tmdb_id = movie.get("tmdbId")
 
-        requester = self.overseerr.get_requester(tmdb_id)
+        request = self.overseerr.get_request(tmdb_id)
+
+        requester = None
+        if request is not None:
+            requester = request.requester
 
         quality = "Unknown"
 

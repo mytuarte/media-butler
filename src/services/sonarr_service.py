@@ -1,10 +1,10 @@
-from models.notification import MovieNotification
-from services.overseerr_service import OverseerrService
+from config import Config
 
 import json
 import requests
 
-from config import Config
+from models.notification import MovieNotification
+from services.overseerr_service import OverseerrService
 
 
 class SonarrService:
@@ -18,13 +18,19 @@ class SonarrService:
 
         tmdb_id = series.get("tmdbId")
 
-        requester = self.overseerr.get_requester(tmdb_id)
+        request = self.overseerr.get_request(tmdb_id)
+
+        requester = None
+        if request is not None:
+            requester = request.requester
 
         return MovieNotification(
-            title=f"{series['title']} - "
-                  f"S{episode['seasonNumber']:02d}"
-                  f"E{episode['episodeNumber']:02d} - "
-                  f"{episode['title']}",
+            title=(
+                f"{series['title']} - "
+                f"S{episode['seasonNumber']:02d}"
+                f"E{episode['episodeNumber']:02d} - "
+                f"{episode['title']}"
+            ),
             year=series["year"],
             requester=requester,
             quality=episode_file.get("quality", "Unknown"),
