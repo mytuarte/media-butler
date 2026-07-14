@@ -4,7 +4,7 @@ from models.space_result import SpaceResult
 from utils.formatting import format_size
 
 
-class LargestMoviesView:
+class LargestSeriesView:
     MAX_TITLE_LENGTH = 42
 
     @classmethod
@@ -17,12 +17,12 @@ class LargestMoviesView:
     @classmethod
     def build(cls, result: SpaceResult):
         embed = discord.Embed(
-            title="🎬 Top 20 Largest Movies",
+            title="📺 Top 20 Largest Series",
             color=discord.Color.gold(),
         )
 
-        if not result.largest_movies:
-            embed.description = "No movies found."
+        if not result.largest_series:
+            embed.description = "No series found."
 
             embed.set_footer(
                 text="Media Butler"
@@ -32,16 +32,16 @@ class LargestMoviesView:
 
         lines = [
             "```",
-            "#  Size       Movie",
+            "#  Size       Title",
             "────────────────────────────────────────────────────────",
         ]
 
-        for index, movie in enumerate(
-            result.largest_movies,
+        for index, series in enumerate(
+            result.largest_series,
             start=1,
         ):
-            title = cls._truncate(movie.title)
-            size = format_size(movie.size_bytes)
+            title = cls._truncate(series.title)
+            size = format_size(series.size_bytes)
 
             lines.append(
                 f"{index:>2} {size:>9}  {title}"

@@ -43,6 +43,31 @@ class SpaceService:
             reverse=True,
         )[:20]
 
+        largest_series = sorted(
+            [
+                SpaceItem(
+                    title=series_item["title"],
+                    size_bytes=series_item.get(
+                        "statistics",
+                        {},
+                    ).get(
+                        "sizeOnDisk",
+                        0,
+                    ),
+                )
+                for series_item in series
+                if series_item.get(
+                    "statistics",
+                    {},
+                ).get(
+                    "sizeOnDisk",
+                    0,
+                )
+            ],
+            key=lambda series: series.size_bytes,
+            reverse=True,
+        )[:20]
+
         return SpaceResult(
             total_bytes=total,
             used_bytes=used,
@@ -55,4 +80,5 @@ class SpaceService:
             series_bytes=series_bytes,
 
             largest_movies=largest_movies,
+            largest_series=largest_series,
         )

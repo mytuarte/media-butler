@@ -1,5 +1,6 @@
 from services.space_service import SpaceService
 from views.largest_movies_view import LargestMoviesView
+from views.largest_series_view import LargestSeriesView
 from views.space_view import SpaceView
 
 
@@ -23,4 +24,8 @@ class SpaceCommand:
 
         await message.channel.send(
             embed=LargestMoviesView.build(result),
+        )
+
+        await message.channel.send(
+            embed=LargestSeriesView.build(result),
         )

@@ -21,3 +21,7 @@ class SpaceResult:
     largest_movies: list[SpaceItem] = field(
         default_factory=list
     )
+
+    largest_series: list[SpaceItem] = field(
+        default_factory=list
+    )
