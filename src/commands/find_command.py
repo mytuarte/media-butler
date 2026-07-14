@@ -1,15 +1,21 @@
+from models.command_channel import CommandChannel
 from services.media_service import MediaService
-from views.search_results_view import SearchResultsView
 from views.media_selection_view import MediaSelectionView
+from views.search_results_view import SearchResultsView
 
 
 class FindCommand:
     """
-    Searches the media library.
+    Searches for movies and TV series.
     """
 
     COMMAND = "find"
-    DESCRIPTION = "Searches Radarr and Sonarr for matching media."
+    DESCRIPTION = "Searches your media library."
+
+    CHANNELS = {
+        CommandChannel.ADMIN,
+        CommandChannel.GENERAL,
+    }
 
     def __init__(self):
         self.media = MediaService()
@@ -33,7 +39,10 @@ class FindCommand:
             )
             return
 
-        embed = SearchResultsView.build(query, results)
+        embed = SearchResultsView.build(
+            query,
+            results,
+        )
 
         await message.channel.send(
             embed=embed,

@@ -1,6 +1,7 @@
+from models.command_channel import CommandChannel
 from services.media_service import MediaService
-from views.search_results_view import SearchResultsView
 from views.media_selection_view import MediaSelectionView
+from views.search_results_view import SearchResultsView
 
 
 class InfoCommand:
@@ -10,6 +11,10 @@ class InfoCommand:
 
     COMMAND = "info"
     DESCRIPTION = "Displays detailed information about media."
+
+    CHANNELS = {
+        CommandChannel.ADMIN,
+    }
 
     def __init__(self):
         self.media = MediaService()
@@ -33,7 +38,10 @@ class InfoCommand:
             )
             return
 
-        embed = SearchResultsView.build(query, results)
+        embed = SearchResultsView.build(
+            query,
+            results,
+        )
 
         await message.channel.send(
             embed=embed,

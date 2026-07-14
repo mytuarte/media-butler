@@ -6,7 +6,9 @@ from commands.ping_command import PingCommand
 from commands.sab_command import SabCommand
 from commands.scenario_command import ScenarioCommand
 from commands.space_command import SpaceCommand
+from commands.trending_command import TrendingCommand
 from config import Config
+from models.command_channel import CommandChannel
 from services.log_service import logger
 from services.registry import services
 from views.delete_result_view import DeleteResultView
@@ -21,29 +23,41 @@ class CommandService:
         self.commands = {}
 
         # Register commands
-        self.commands[PingCommand.COMMAND] = PingCommand()
-        self.commands[FindCommand.COMMAND] = FindCommand()
-        self.commands[InfoCommand.COMMAND] = InfoCommand()
-        self.commands[DeleteCommand.COMMAND] = DeleteCommand()
-        self.commands[ScenarioCommand.COMMAND] = ScenarioCommand()
-        self.commands[SabCommand.COMMAND] = SabCommand()
-        self.commands[SpaceCommand.COMMAND] = SpaceCommand()
-        self.commands[HelpCommand.COMMAND] = HelpCommand(self.commands)
+        self.register(PingCommand())
+        self.register(FindCommand())
+        self.register(InfoCommand())
+        self.register(DeleteCommand())
+        self.register(ScenarioCommand())
+        self.register(SabCommand())
+        self.register(SpaceCommand())
+        self.register(TrendingCommand())
+
+        self.register(
+            HelpCommand(self.commands)
+        )
+
+    def register(self, command):
+        self.commands[command.COMMAND] = command
+
+    def get_channel_type(self, channel_id):
+        if channel_id == Config.DISCORD_ADMIN_CHANNEL_ID:
+            return CommandChannel.ADMIN
+
+        if channel_id == Config.DISCORD_MEDIA_STATUS_CHANNEL_ID:
+            return CommandChannel.GENERAL
+
+        return None
 
     async def handle_message(self, message):
         # Ignore bots (including ourselves)
         if message.author.bot:
             return
 
-        # Only allow commands in approved channels
-        channel_id = message.channel.id
-        logger.info(f"Channel ID: {channel_id}")
+        channel = self.get_channel_type(
+            message.channel.id
+        )
 
-        if channel_id == Config.DISCORD_ADMIN_CHANNEL_ID:
-            allowed_commands = set(self.commands.keys())
-        elif channel_id == Config.DISCORD_MEDIA_STATUS_CHANNEL_ID:
-            allowed_commands = {FindCommand.COMMAND}
-        else:
+        if channel is None:
             return
 
         content = message.content.strip()
@@ -80,13 +94,11 @@ class CommandService:
         if not content.startswith("!"):
             return
 
-        # Remove the "!"
         command_name = content[1:].split()[0].lower()
 
-        logger.info(f"Received command: {command_name}")
-
-        if command_name not in allowed_commands:
-            return
+        logger.info(
+            f"Received command: {command_name}"
+        )
 
         command = self.commands.get(command_name)
 
@@ -95,6 +107,9 @@ class CommandService:
                 f"Unknown command: `{command_name}`\n"
                 "Type `!help` to see available commands."
             )
+            return
+
+        if channel not in command.CHANNELS:
             return
 
         await command.execute(message)

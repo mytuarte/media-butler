@@ -1,10 +1,17 @@
+from models.command_channel import CommandChannel
+
+
 class PingCommand:
     """
-    Simple command used to verify the bot is responding.
+    Simple health check command.
     """
 
     COMMAND = "ping"
-    DESCRIPTION = "Tests whether the bot is responding."
+    DESCRIPTION = "Tests whether the bot is online."
+
+    CHANNELS = {
+        CommandChannel.ADMIN,
+    }
 
     async def execute(self, message):
         await message.channel.send("Pong!")

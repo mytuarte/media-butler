@@ -14,6 +14,9 @@ class Config:
         os.getenv("DISCORD_MEDIA_STATUS_CHANNEL_ID")
     )
 
+    # TMDb
+    TMDB_API_KEY = os.getenv("TMDB_API_KEY")
+    
     # Radarr
     RADARR_URL = os.getenv("RADARR_URL")
     RADARR_API_KEY = os.getenv("RADARR_API_KEY")

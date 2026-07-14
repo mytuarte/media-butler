@@ -1,5 +1,6 @@
 import json
 
+from models.command_channel import CommandChannel
 from services.sabnzbd_client import SabnzbdClient
 
 
@@ -10,6 +11,10 @@ class SabCommand:
 
     COMMAND = "sab"
     DESCRIPTION = "Displays the current SABnzbd queue."
+
+    CHANNELS = {
+        CommandChannel.ADMIN,
+    }
 
     def __init__(self):
         self.client = SabnzbdClient()

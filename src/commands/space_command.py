@@ -1,3 +1,4 @@
+from models.command_channel import CommandChannel
 from services.space_service import SpaceService
 from views.largest_movies_view import LargestMoviesView
 from views.largest_series_view import LargestSeriesView
@@ -11,6 +12,10 @@ class SpaceCommand:
 
     COMMAND = "space"
     DESCRIPTION = "Displays media storage usage."
+
+    CHANNELS = {
+        CommandChannel.ADMIN,
+    }
 
     def __init__(self):
         self.space = SpaceService()

@@ -1,3 +1,4 @@
+from models.command_channel import CommandChannel
 from services.scenario_service import ScenarioService
 from views.movie_details_view import MovieDetailsView
 from views.series_details_view import SeriesDetailsView
@@ -10,6 +11,10 @@ class ScenarioCommand:
 
     COMMAND = "scenario"
     DESCRIPTION = "Displays developer test scenarios."
+
+    CHANNELS = {
+        CommandChannel.ADMIN,
+    }
 
     def __init__(self):
         self.scenarios = ScenarioService()
@@ -44,4 +49,6 @@ class ScenarioCommand:
                 )
                 return
 
-        await message.channel.send(embed=embed)
+        await message.channel.send(
+            embed=embed,
+        )
