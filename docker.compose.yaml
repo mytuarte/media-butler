@@ -17,6 +17,7 @@ services:
       - ./config:/app/config
       - ./data:/app/data
       - ./logs:/app/logs
+      - /volume1:/volume1:ro
       - /volume2:/volume2:ro
 
     ports:
