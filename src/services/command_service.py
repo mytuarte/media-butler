@@ -5,6 +5,7 @@ from commands.info_command import InfoCommand
 from commands.ping_command import PingCommand
 from commands.sab_command import SabCommand
 from commands.scenario_command import ScenarioCommand
+from commands.space_command import SpaceCommand
 from config import Config
 from services.log_service import logger
 from services.registry import services
@@ -26,6 +27,7 @@ class CommandService:
         self.commands[DeleteCommand.COMMAND] = DeleteCommand()
         self.commands[ScenarioCommand.COMMAND] = ScenarioCommand()
         self.commands[SabCommand.COMMAND] = SabCommand()
+        self.commands[SpaceCommand.COMMAND] = SpaceCommand()
         self.commands[HelpCommand.COMMAND] = HelpCommand(self.commands)
 
     async def handle_message(self, message):

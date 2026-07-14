@@ -17,6 +17,7 @@ services:
       - ./config:/app/config
       - ./data:/app/data
       - ./logs:/app/logs
+      - /volume2:/volume2:ro
 
     ports:
       - "5000:5000"
