@@ -3,6 +3,8 @@ from dataclasses import dataclass
 
 @dataclass
 class OverseerrRequest:
+    id: int
+
     status: int | None
     media_status: int | None
 

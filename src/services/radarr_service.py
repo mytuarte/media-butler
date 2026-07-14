@@ -51,3 +51,20 @@ class RadarrService:
         response.raise_for_status()
 
         return response.json()
+
+    def delete_movie(self, movie_id: int):
+        headers = {
+            "X-Api-Key": Config.RADARR_API_KEY,
+        }
+
+        response = requests.delete(
+            f"{Config.RADARR_URL}/api/v3/movie/{movie_id}",
+            headers=headers,
+            params={
+                "deleteFiles": True,
+                "addImportExclusion": False,
+            },
+            timeout=10,
+        )
+
+        response.raise_for_status()

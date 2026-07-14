@@ -41,6 +41,12 @@ class OverseerrService:
 
         return None
 
+    def delete_request(self, request_id: int):
+        return self.http.delete(
+            f"{Config.OVERSEERR_URL}/api/v1/request/{request_id}",
+            headers=self.headers,
+        )
+
     def debug_request(self, tmdb_id):
         request = self.get_request(tmdb_id)
 

@@ -1,11 +1,14 @@
 from commands.delete_command import DeleteCommand
 from commands.find_command import FindCommand
 from commands.help_command import HelpCommand
+from commands.info_command import InfoCommand
 from commands.ping_command import PingCommand
 from commands.sab_command import SabCommand
 from commands.scenario_command import ScenarioCommand
 from config import Config
 from services.log_service import logger
+from services.registry import services
+from views.delete_result_view import DeleteResultView
 
 
 class CommandService:
@@ -19,6 +22,7 @@ class CommandService:
         # Register commands
         self.commands[PingCommand.COMMAND] = PingCommand()
         self.commands[FindCommand.COMMAND] = FindCommand()
+        self.commands[InfoCommand.COMMAND] = InfoCommand()
         self.commands[DeleteCommand.COMMAND] = DeleteCommand()
         self.commands[ScenarioCommand.COMMAND] = ScenarioCommand()
         self.commands[SabCommand.COMMAND] = SabCommand()
@@ -41,6 +45,34 @@ class CommandService:
             return
 
         content = message.content.strip()
+
+        #
+        # Handle pending delete confirmations
+        #
+        if content.upper() == "YES":
+            media = services.delete_confirmation.confirm(
+                message.author.id,
+            )
+
+            if media is not None:
+                try:
+                    result = services.delete.delete(media)
+
+                    await message.channel.send(
+                        embed=DeleteResultView.build(result),
+                    )
+
+                except NotImplementedError as ex:
+                    await message.channel.send(
+                        f"⚠️ {ex}"
+                    )
+
+                except Exception as ex:
+                    await message.channel.send(
+                        f"❌ Delete failed.\n\n`{ex}`"
+                    )
+
+                return
 
         # Ignore anything that isn't a command
         if not content.startswith("!"):

@@ -7,5 +7,8 @@ class ServiceRegistry:
         self.sonarr = None
         self.sonarr_search = None
 
+        self.delete_confirmation = None
+        self.delete = None
+
 
 services = ServiceRegistry()

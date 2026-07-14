@@ -1,7 +1,10 @@
 import discord
 
 from models.media_result import MediaResult
+from services.media_details_service import MediaDetailsService
+from views.delete_media_view import DeleteMediaView
 from views.details_view import DetailsView
+from views.info_view import InfoView
 
 
 class MediaSelectionView(discord.ui.View):
@@ -15,6 +18,8 @@ class MediaSelectionView(discord.ui.View):
 
         self.requesting_user_id = requesting_user_id
         self.mode = mode
+
+        self.media_details = MediaDetailsService()
 
         for index, result in enumerate(results[:10], start=1):
             button = discord.ui.Button(
@@ -35,11 +40,24 @@ class MediaSelectionView(discord.ui.View):
                 )
                 return
 
-            embed = DetailsView.build(result)
+            view = None
+
+            if self.mode == "info":
+                details = self.media_details.get_details(result)
+                embed = InfoView.build(details)
+
+            else:
+                embed = DetailsView.build(result)
+
+                if self.mode == "delete":
+                    view = DeleteMediaView(
+                        result=result,
+                        requesting_user_id=self.requesting_user_id,
+                    )
 
             await interaction.response.edit_message(
                 embed=embed,
-                view=None,
+                view=view,
             )
 
         return callback

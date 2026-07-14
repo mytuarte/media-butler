@@ -22,6 +22,7 @@ class OverseerrRequestFactory:
             discord_id = None
 
         return OverseerrRequest(
+            id=request["id"],
             status=request.get("status"),
             media_status=media.get("status"),
             requester=requester,
