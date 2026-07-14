@@ -1,6 +1,5 @@
 from config import Config
 
-import json
 import requests
 
 from models.notification import MovieNotification
@@ -35,3 +34,18 @@ class SonarrService:
             requester=requester,
             quality=episode_file.get("quality", "Unknown"),
         )
+
+    def get_series(self):
+        headers = {
+            "X-Api-Key": Config.SONARR_API_KEY,
+        }
+
+        response = requests.get(
+            f"{Config.SONARR_URL}/api/v3/series",
+            headers=headers,
+            timeout=10,
+        )
+
+        response.raise_for_status()
+
+        return response.json()

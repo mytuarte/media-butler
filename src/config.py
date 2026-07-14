@@ -30,6 +30,9 @@ class Config:
     SABNZBD_URL = os.getenv("SABNZBD_URL")
     SABNZBD_API_KEY = os.getenv("SABNZBD_API_KEY")
 
+    # Filesystem
+    MEDIA_ROOT = os.getenv("MEDIA_ROOT")
+
     # Discord Users
     USERS = {
         os.getenv("OVERSEERR_MIKE"): {
