@@ -3,13 +3,13 @@ from views.search_results_view import SearchResultsView
 from views.media_selection_view import MediaSelectionView
 
 
-class FindCommand:
+class DeleteCommand:
     """
-    Searches the media library.
+    Searches the media library for media to delete.
     """
 
-    COMMAND = "find"
-    DESCRIPTION = "Searches Radarr and Sonarr for matching media."
+    COMMAND = "delete"
+    DESCRIPTION = "Searches for media to delete."
 
     def __init__(self):
         self.media = MediaService()
@@ -19,7 +19,7 @@ class FindCommand:
 
         if len(parts) < 2:
             await message.channel.send(
-                "Usage: `!find <title>`"
+                "Usage: `!delete <title>`"
             )
             return
 
@@ -40,6 +40,6 @@ class FindCommand:
             view=MediaSelectionView(
                 results=results,
                 requesting_user_id=message.author.id,
-                mode="find",
+                mode="delete",
             ),
         )

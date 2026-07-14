@@ -9,10 +9,12 @@ class MediaSelectionView(discord.ui.View):
         self,
         results: list[MediaResult],
         requesting_user_id: int,
+        mode: str = "find",
     ):
         super().__init__(timeout=300)
 
         self.requesting_user_id = requesting_user_id
+        self.mode = mode
 
         for index, result in enumerate(results[:10], start=1):
             button = discord.ui.Button(

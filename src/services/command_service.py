@@ -1,3 +1,4 @@
+from commands.delete_command import DeleteCommand
 from commands.find_command import FindCommand
 from commands.help_command import HelpCommand
 from commands.ping_command import PingCommand
@@ -18,6 +19,7 @@ class CommandService:
         # Register commands
         self.commands[PingCommand.COMMAND] = PingCommand()
         self.commands[FindCommand.COMMAND] = FindCommand()
+        self.commands[DeleteCommand.COMMAND] = DeleteCommand()
         self.commands[ScenarioCommand.COMMAND] = ScenarioCommand()
         self.commands[SabCommand.COMMAND] = SabCommand()
         self.commands[HelpCommand.COMMAND] = HelpCommand(self.commands)
