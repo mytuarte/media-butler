@@ -6,15 +6,16 @@ from models.command_channel import CommandChannel
 
 class HelpCommand:
     """
-    Displays all available commands.
+    Displays available commands for the current channel.
     """
 
     COMMAND = "help"
-    DESCRIPTION = "Displays all available commands."
+    DESCRIPTION = "Displays available commands."
 
     CHANNELS = {
         CommandChannel.ADMIN,
         CommandChannel.GENERAL,
+        CommandChannel.MEDIA_STATUS,
     }
 
     def __init__(self, commands):
@@ -25,14 +26,12 @@ class HelpCommand:
             return CommandChannel.ADMIN
 
         if channel_id == Config.DISCORD_MEDIA_STATUS_CHANNEL_ID:
-            return CommandChannel.GENERAL
+            return CommandChannel.MEDIA_STATUS
 
         return None
 
     async def execute(self, message):
-        channel = self._get_channel_type(
-            message.channel.id
-        )
+        channel = self._get_channel_type(message.channel.id)
 
         embed = discord.Embed(
             title="🤖 Media Butler Commands",
@@ -54,9 +53,7 @@ class HelpCommand:
                 inline=False,
             )
 
-        embed.set_footer(
-            text="Media Butler"
-        )
+        embed.set_footer(text="Media Butler")
 
         await message.channel.send(
             embed=embed,

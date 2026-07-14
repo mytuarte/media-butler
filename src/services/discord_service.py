@@ -32,6 +32,7 @@ class DiscordService:
 
             # Only process commands in approved channels
             if message.channel.id not in {
+                Config.DISCORD_CHANNEL_ID,
                 Config.DISCORD_ADMIN_CHANNEL_ID,
                 Config.DISCORD_MEDIA_STATUS_CHANNEL_ID,
             }:
@@ -89,4 +90,3 @@ class DiscordService:
         )
 
         logger.info(f"Discord notification sent for '{movie.title}'.")
-        

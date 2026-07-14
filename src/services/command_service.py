@@ -46,7 +46,7 @@ class CommandService:
             return CommandChannel.ADMIN
 
         if channel_id == Config.DISCORD_MEDIA_STATUS_CHANNEL_ID:
-            return CommandChannel.GENERAL
+            return CommandChannel.MEDIA_STATUS
 
         return None
 
