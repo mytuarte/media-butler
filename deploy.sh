@@ -12,9 +12,11 @@ echo
 echo "Using project SSH configuration..."
 export GIT_SSH_COMMAND="ssh -F $(pwd)/.ssh/config"
 
+CURRENT_BRANCH=$(git branch --show-current)
+
 echo
-echo "Pulling latest code..."
-git pull origin feature/discord-commands
+echo "Pulling latest code from '$CURRENT_BRANCH'..."
+git pull origin "$CURRENT_BRANCH"
 
 echo
 echo "Stopping existing container..."
