@@ -28,18 +28,28 @@ class OverseerrService:
             headers=self.headers,
         )
 
-    def get_request(self, tmdb_id) -> OverseerrRequest | None:
+    def get_request_lookup(
+        self,
+    ) -> dict[int, OverseerrRequest]:
         requests = self.get_requests()
+
+        lookup = {}
 
         for request in requests["results"]:
             media = request.get("media", {})
+            tmdb_id = media.get("tmdbId")
 
-            if media.get("tmdbId") == tmdb_id:
-                return OverseerrRequestFactory.from_api(
-                    request
-                )
+            if tmdb_id is None:
+                continue
 
-        return None
+            lookup[tmdb_id] = OverseerrRequestFactory.from_api(request)
+
+        return lookup
+
+    def get_request(self, tmdb_id: int) -> OverseerrRequest | None:
+        lookup = self.get_request_lookup()
+
+        return lookup.get(tmdb_id)
 
     def delete_request(self, request_id: int):
         return self.http.delete(
@@ -51,9 +61,7 @@ class OverseerrService:
         request = self.get_request(tmdb_id)
 
         if request is None:
-            print(
-                f"No Overseerr request found for TMDb ID {tmdb_id}"
-            )
+            print(f"No Overseerr request found for TMDb ID {tmdb_id}")
             return None
 
         print("\n" + "=" * 70)

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 class DiscoveryItem:
     title: str
     media_type: str
+    tmdb_id: int
 
     release_date: str | None = None
     poster_url: str | None = None

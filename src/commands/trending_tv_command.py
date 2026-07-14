@@ -5,10 +5,10 @@ from services.discovery.discovery_service import (
 from views.media_list_view import MediaListView
 
 
-class TrendingCommand:
-    COMMAND = "trending"
+class TrendingTvCommand:
+    COMMAND = "trendingtv"
 
-    DESCRIPTION = "Shows the current trending movies from TMDb."
+    DESCRIPTION = "Shows the current trending TV shows from TMDb."
 
     CHANNELS = {
         CommandChannel.ADMIN,
@@ -19,11 +19,11 @@ class TrendingCommand:
         self.discovery = DiscoveryService()
 
     async def execute(self, message):
-        movies = self.discovery.get_trending_movies()
+        shows = self.discovery.get_trending_tv()
 
         embed = MediaListView.build(
-            "🔥 Trending Movies This Week",
-            movies,
+            "📺 Trending TV This Week",
+            shows,
         )
 
         await message.channel.send(embed=embed)

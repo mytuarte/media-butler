@@ -1,8 +1,8 @@
+import requests
+
 from config import Config
 from models.notification import MovieNotification
 from services.overseerr_service import OverseerrService
-
-import requests
 
 
 class RadarrService:
@@ -25,9 +25,7 @@ class RadarrService:
         movie_file = payload.get("movieFile")
         if movie_file:
             quality = (
-                movie_file.get("quality", {})
-                .get("quality", {})
-                .get("name", "Unknown")
+                movie_file.get("quality", {}).get("quality", {}).get("name", "Unknown")
             )
 
         return MovieNotification(
@@ -51,6 +49,11 @@ class RadarrService:
         response.raise_for_status()
 
         return response.json()
+
+    def get_tmdb_ids(self) -> set[int]:
+        movies = self.get_movies()
+
+        return {movie["tmdbId"] for movie in movies if movie.get("tmdbId") is not None}
 
     def delete_movie(self, movie_id: int):
         headers = {

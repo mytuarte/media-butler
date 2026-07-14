@@ -1,4 +1,5 @@
 from commands.delete_command import DeleteCommand
+from commands.digital_command import DigitalCommand
 from commands.find_command import FindCommand
 from commands.help_command import HelpCommand
 from commands.info_command import InfoCommand
@@ -7,6 +8,7 @@ from commands.sab_command import SabCommand
 from commands.scenario_command import ScenarioCommand
 from commands.space_command import SpaceCommand
 from commands.trending_command import TrendingCommand
+from commands.trending_tv_command import TrendingTvCommand
 from config import Config
 from models.command_channel import CommandChannel
 from services.log_service import logger
@@ -31,10 +33,10 @@ class CommandService:
         self.register(SabCommand())
         self.register(SpaceCommand())
         self.register(TrendingCommand())
+        self.register(TrendingTvCommand())
+        self.register(DigitalCommand())
 
-        self.register(
-            HelpCommand(self.commands)
-        )
+        self.register(HelpCommand(self.commands))
 
     def register(self, command):
         self.commands[command.COMMAND] = command
@@ -53,9 +55,7 @@ class CommandService:
         if message.author.bot:
             return
 
-        channel = self.get_channel_type(
-            message.channel.id
-        )
+        channel = self.get_channel_type(message.channel.id)
 
         if channel is None:
             return
@@ -79,14 +79,10 @@ class CommandService:
                     )
 
                 except NotImplementedError as ex:
-                    await message.channel.send(
-                        f"⚠️ {ex}"
-                    )
+                    await message.channel.send(f"⚠️ {ex}")
 
                 except Exception as ex:
-                    await message.channel.send(
-                        f"❌ Delete failed.\n\n`{ex}`"
-                    )
+                    await message.channel.send(f"❌ Delete failed.\n\n`{ex}`")
 
                 return
 
@@ -96,9 +92,7 @@ class CommandService:
 
         command_name = content[1:].split()[0].lower()
 
-        logger.info(
-            f"Received command: {command_name}"
-        )
+        logger.info(f"Received command: {command_name}")
 
         command = self.commands.get(command_name)
 

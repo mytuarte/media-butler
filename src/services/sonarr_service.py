@@ -1,7 +1,6 @@
-from config import Config
-
 import requests
 
+from config import Config
 from models.notification import MovieNotification
 from services.overseerr_service import OverseerrService
 
@@ -49,3 +48,8 @@ class SonarrService:
         response.raise_for_status()
 
         return response.json()
+
+    def get_tmdb_ids(self) -> set[int]:
+        series = self.get_series()
+
+        return {show["tmdbId"] for show in series if show.get("tmdbId") is not None}
