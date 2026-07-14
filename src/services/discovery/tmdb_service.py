@@ -1,6 +1,7 @@
 import requests
 
 from config import Config
+from models.discovery.discovery_item import DiscoveryItem
 
 
 class TmdbService:
@@ -9,14 +10,25 @@ class TmdbService:
     def get_trending_movies(self):
         response = requests.get(
             f"{self.BASE_URL}/trending/movie/week",
-            headers={
-                "Authorization": (
-                    f"Bearer {Config.TMDB_API_KEY}"
-                )
+            params={
+                "api_key": Config.TMDB_API_KEY,
             },
             timeout=10,
         )
 
         response.raise_for_status()
 
-        return response.json()
+        data = response.json()
+
+        movies = []
+
+        for movie in data["results"]:
+            movies.append(
+                DiscoveryItem(
+                    title=movie["title"],
+                    media_type="movie",
+                    release_date=movie.get("release_date"),
+                )
+            )
+
+        return movies

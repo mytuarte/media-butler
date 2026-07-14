@@ -1,5 +1,7 @@
 from models.command_channel import CommandChannel
-from services.discovery.tmdb_service import TmdbService
+from services.discovery.discovery_service import DiscoveryService
+
+from views.trending_view import TrendingView
 
 
 class TrendingCommand:
@@ -16,13 +18,17 @@ class TrendingCommand:
     }
 
     def __init__(self):
-        self.tmdb = TmdbService()
+        self.discovery = DiscoveryService()
 
     async def execute(self, message):
-        data = self.tmdb.get_trending_movies()
+        movies = self.discovery.get_trending_movies()
 
-        first = data["results"][0]
+        if not movies:
+            await message.channel.send("No trending movies found.")
+            return
+
+        embed = TrendingView.build(movies)
 
         await message.channel.send(
-            f"#{1} {first['title']} ({first['release_date']})"
+            embed=embed,
         )
