@@ -15,7 +15,7 @@ class HelpCommand:
     CHANNELS = {
         CommandChannel.ADMIN,
         CommandChannel.GENERAL,
-        CommandChannel.MEDIA_STATUS,
+        CommandChannel.MEDIA_SEARCH,
     }
 
     def __init__(self, commands):
@@ -25,8 +25,11 @@ class HelpCommand:
         if channel_id == Config.DISCORD_ADMIN_CHANNEL_ID:
             return CommandChannel.ADMIN
 
-        if channel_id == Config.DISCORD_MEDIA_STATUS_CHANNEL_ID:
-            return CommandChannel.MEDIA_STATUS
+        if channel_id == Config.DISCORD_MEDIA_SEARCH_CHANNEL_ID:
+            return CommandChannel.MEDIA_SEARCH
+
+        if channel_id == Config.DISCORD_CHANNEL_ID:
+            return CommandChannel.GENERAL
 
         return None
 

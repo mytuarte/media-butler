@@ -1,7 +1,13 @@
+import json
+
 import requests
 
 from config import Config
+from models.monitoring_state import MonitoringState
 from models.notification import MovieNotification
+from services.media_status.media_status_resolver import (
+    MediaStatusResolver,
+)
 from services.overseerr_service import OverseerrService
 
 
@@ -49,7 +55,30 @@ class SonarrService:
 
         return response.json()
 
-    def get_tmdb_ids(self) -> set[int]:
+    def get_monitoring_states(
+        self,
+    ) -> dict[int, tuple[MonitoringState, str | None]]:
         series = self.get_series()
 
-        return {show["tmdbId"] for show in series if show.get("tmdbId") is not None}
+        return {
+            show["tmdbId"]: (MediaStatusResolver.resolve_series(show))
+            for show in series
+            if show.get("tmdbId") is not None
+        }
+
+    def debug_series(
+        self,
+        title: str,
+    ):
+        title = title.lower()
+
+        for series in self.get_series():
+            if title in series.get("title", "").lower():
+                print("\n" + "=" * 80)
+                print(f"{series.get('title')} ({series.get('year')})")
+                print("=" * 80)
+                print(json.dumps(series, indent=4))
+                print("=" * 80 + "\n")
+                return
+
+        print(f'No series found matching "{title}"')

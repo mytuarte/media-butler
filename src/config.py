@@ -10,7 +10,30 @@ class Config:
     DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
     DISCORD_CHANNEL_ID = int(os.getenv("DISCORD_CHANNEL_ID"))
     DISCORD_ADMIN_CHANNEL_ID = int(os.getenv("DISCORD_ADMIN_CHANNEL_ID"))
-    DISCORD_MEDIA_STATUS_CHANNEL_ID = int(os.getenv("DISCORD_MEDIA_STATUS_CHANNEL_ID"))
+    DISCORD_MEDIA_SEARCH_CHANNEL_ID = int(os.getenv("DISCORD_MEDIA_SEARCH_CHANNEL_ID"))
+
+    DELETE_SEARCH_MESSAGES = (
+        os.getenv(
+            "DELETE_SEARCH_MESSAGES",
+            "true",
+        ).lower()
+        == "true"
+    )
+
+    DELETE_SEARCH_RESULTS = (
+        os.getenv(
+            "DELETE_SEARCH_RESULTS",
+            "true",
+        ).lower()
+        == "true"
+    )
+
+    SEARCH_RESULT_LIFETIME_SECONDS = int(
+        os.getenv(
+            "SEARCH_RESULT_LIFETIME_SECONDS",
+            "180",
+        )
+    )
 
     # TMDb
     TMDB_API_KEY = os.getenv("TMDB_API_KEY")

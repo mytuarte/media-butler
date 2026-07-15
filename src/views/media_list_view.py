@@ -1,6 +1,7 @@
 import discord
 
 from models.discovery.discovery_item import DiscoveryItem
+from models.monitoring_state import MonitoringState
 
 
 class MediaListView:
@@ -16,7 +17,7 @@ class MediaListView:
 
         if not media:
             embed.description = "No media found."
-            embed.set_footer(text="🟢 In Library • 🟡 Requested • ⚪ Not Owned")
+            embed.set_footer(text="🟢 Available • 🟡 Monitored • ⚪ Not Added")
             return embed
 
         media = sorted(
@@ -28,11 +29,17 @@ class MediaListView:
 
         for item in media:
             icon = MediaListView._status_icon(item)
-            lines.append(f"{icon} {item.title}")
+
+            line = f"{icon} {item.title}"
+
+            if item.status_detail:
+                line += f" ({item.status_detail})"
+
+            lines.append(line)
 
         embed.description = "\n".join(lines)
 
-        embed.set_footer(text="🟢 In Library • 🟡 Requested • ⚪ Not Owned")
+        embed.set_footer(text="🟢 Available • 🟡 Monitored • ⚪ Not Added")
 
         return embed
 
@@ -40,22 +47,32 @@ class MediaListView:
     def _status_icon(
         item: DiscoveryItem,
     ) -> str:
-        if item.in_library:
-            return "🟢"
+        match item.monitoring_state:
+            case MonitoringState.AVAILABLE:
+                return "🟢"
 
-        if item.requested:
-            return "🟡"
+            case MonitoringState.COMING_SOON:
+                return "🟡"
 
-        return "⚪"
+            case MonitoringState.DOWNLOADING:
+                return "⬇️"
+
+            case _:
+                return "⚪"
 
     @staticmethod
     def _sort_key(
         item: DiscoveryItem,
     ) -> tuple[int]:
-        if item.in_library:
-            return (0,)
+        match item.monitoring_state:
+            case MonitoringState.AVAILABLE:
+                return (0,)
 
-        if item.requested:
-            return (1,)
+            case MonitoringState.DOWNLOADING:
+                return (1,)
 
-        return (2,)
+            case MonitoringState.COMING_SOON:
+                return (2,)
+
+            case _:
+                return (3,)

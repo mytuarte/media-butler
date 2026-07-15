@@ -1,4 +1,5 @@
 from models.discovery.discovery_item import DiscoveryItem
+from models.monitoring_state import MonitoringState
 from services.discovery.tmdb_service import TmdbService
 from services.overseerr_service import OverseerrService
 from services.radarr_service import RadarrService
@@ -33,23 +34,40 @@ class DiscoveryService:
 
         return items
 
-    def _enrich(self, items: list[DiscoveryItem]) -> None:
-        self._enrich_library(items)
-        self._enrich_requests(items)
-
-    def _enrich_library(
+    def _enrich(
         self,
         items: list[DiscoveryItem],
     ) -> None:
-        movie_tmdb_ids = self.radarr.get_tmdb_ids()
-        tv_tmdb_ids = self.sonarr.get_tmdb_ids()
+        self._enrich_monitoring_state(items)
+        self._enrich_requests(items)
+
+    def _enrich_monitoring_state(
+        self,
+        items: list[DiscoveryItem],
+    ) -> None:
+        movie_states = self.radarr.get_monitoring_states()
+        tv_states = self.sonarr.get_monitoring_states()
 
         for item in items:
             if item.media_type == "movie":
-                item.in_library = item.tmdb_id in movie_tmdb_ids
+                state, detail = movie_states.get(
+                    item.tmdb_id,
+                    (
+                        MonitoringState.NOT_ADDED,
+                        None,
+                    ),
+                )
+            else:
+                state, detail = tv_states.get(
+                    item.tmdb_id,
+                    (
+                        MonitoringState.NOT_ADDED,
+                        None,
+                    ),
+                )
 
-            elif item.media_type == "tv":
-                item.in_library = item.tmdb_id in tv_tmdb_ids
+            item.monitoring_state = state
+            item.status_detail = detail
 
     def _enrich_requests(
         self,
@@ -63,5 +81,4 @@ class DiscoveryService:
             if request is None:
                 continue
 
-            item.requested = True
             item.requester = request.requester

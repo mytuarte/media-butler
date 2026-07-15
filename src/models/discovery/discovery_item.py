@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from models.monitoring_state import MonitoringState
+
 
 @dataclass
 class DiscoveryItem:
@@ -11,6 +13,8 @@ class DiscoveryItem:
     poster_url: str | None = None
     overview: str | None = None
 
-    in_library: bool = False
-    requested: bool = False
+    monitoring_state: MonitoringState = MonitoringState.NOT_ADDED
+
+    status_detail: str | None = None
+
     requester: str | None = None

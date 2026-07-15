@@ -21,6 +21,7 @@ from services.overseerr_service import OverseerrService
 from services.radarr_service import RadarrService
 from services.registry import services
 from services.search.sonarr_search_service import SonarrSearchService
+from services.search_channel_service import SearchChannelService
 from services.sonarr_service import SonarrService
 
 app = Flask(__name__)
@@ -33,8 +34,11 @@ services.radarr = RadarrService()
 services.sonarr = SonarrService()
 services.sonarr_search = SonarrSearchService()
 services.overseerr = OverseerrService()
+
 services.delete_confirmation = DeleteConfirmationService()
 services.delete = DeleteService()
+
+services.search_channel = SearchChannelService()
 
 initialize_webhook_routes(
     services.notification,
@@ -48,6 +52,8 @@ initialize_debug_routes(
     services.notification,
     services.overseerr,
     services.sonarr_search,
+    services.sonarr,
+    services.radarr,
 )
 
 app.register_blueprint(webhook_routes)
@@ -56,8 +62,10 @@ app.register_blueprint(debug_routes)
 
 def start_discord():
     print("Starting Discord thread...")
+
     try:
         asyncio.run(services.discord.start())
+
     except Exception:
         traceback.print_exc()
 
@@ -67,6 +75,7 @@ def main():
         target=start_discord,
         daemon=True,
     )
+
     discord_thread.start()
 
     app.run(

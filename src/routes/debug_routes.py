@@ -2,8 +2,8 @@ import asyncio
 
 from flask import Blueprint, jsonify
 
-from views.movie_details_view import MovieDetailsView
 from services.scenario_service import ScenarioService
+from views.movie_details_view import MovieDetailsView
 
 debug_routes = Blueprint(
     "debug_routes",
@@ -16,29 +16,45 @@ def initialize(
     notification_service,
     overseerr_service,
     sonarr_search_service,
+    sonarr_service,
+    radarr_service,
 ):
     @debug_routes.get("/debug/sonarr")
     def debug_sonarr():
         sonarr_search_service.search("")
         return "Printed first Sonarr series to console."
 
+    @debug_routes.get("/debug/sonarr/<title>")
+    def debug_sonarr_title(title):
+        sonarr_service.debug_series(title)
+
+        return jsonify(
+            {
+                "message": "Series printed to console.",
+            }
+        )
+
+    @debug_routes.get("/debug/radarr/<title>")
+    def debug_radarr(title):
+        radarr_service.debug_movie(title)
+
+        return jsonify(
+            {
+                "message": "Movie printed to console.",
+            }
+        )
+
     @debug_routes.get("/debug/overseerr/test")
     def overseerr_test():
-        return jsonify(
-            overseerr_service.test_connection()
-        )
+        return jsonify(overseerr_service.test_connection())
 
     @debug_routes.get("/debug/overseerr/requests")
     def overseerr_requests():
-        return jsonify(
-            overseerr_service.get_requests()
-        )
+        return jsonify(overseerr_service.get_requests())
 
     @debug_routes.get("/debug/overseerr/request/<int:tmdb_id>")
     def overseerr_request(tmdb_id):
-        return jsonify(
-            overseerr_service.get_request(tmdb_id)
-        )
+        return jsonify(overseerr_service.get_request(tmdb_id))
 
     @debug_routes.get("/debug/overseerr/request/<int:tmdb_id>/dump")
     def overseerr_request_dump(tmdb_id):

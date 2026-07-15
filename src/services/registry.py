@@ -10,5 +10,7 @@ class ServiceRegistry:
         self.delete_confirmation = None
         self.delete = None
 
+        self.search_channel = None
+
 
 services = ServiceRegistry()

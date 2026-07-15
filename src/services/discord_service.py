@@ -4,9 +4,8 @@ import discord
 
 from config import Config
 from models.notification import MovieNotification
-from services.log_service import logger
-
 from services.command_service import CommandService
+from services.log_service import logger
 
 
 class DiscordService:
@@ -30,12 +29,14 @@ class DiscordService:
             if message.author.bot:
                 return
 
-            # Only process commands in approved channels
-            if message.channel.id not in {
+            # Only process messages in approved channels
+            allowed_channels = {
                 Config.DISCORD_CHANNEL_ID,
                 Config.DISCORD_ADMIN_CHANNEL_ID,
-                Config.DISCORD_MEDIA_STATUS_CHANNEL_ID,
-            }:
+                Config.DISCORD_MEDIA_SEARCH_CHANNEL_ID,
+            }
+
+            if message.channel.id not in allowed_channels:
                 return
 
             await self.command_service.handle_message(message)
@@ -85,8 +86,8 @@ class DiscordService:
         embed.set_footer(text="Media Butler")
 
         await channel.send(
-            content=requester if isinstance(movie.requester, int) else None,
+            content=(requester if isinstance(movie.requester, int) else None),
             embed=embed,
         )
 
-        logger.info(f"Discord notification sent for '{movie.title}'.")
+        logger.info(f"Discord notification sent for " f"'{movie.title}'.")

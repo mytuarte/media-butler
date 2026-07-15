@@ -45,13 +45,16 @@ class CommandService:
         if channel_id == Config.DISCORD_ADMIN_CHANNEL_ID:
             return CommandChannel.ADMIN
 
-        if channel_id == Config.DISCORD_MEDIA_STATUS_CHANNEL_ID:
-            return CommandChannel.MEDIA_STATUS
+        if channel_id == Config.DISCORD_MEDIA_SEARCH_CHANNEL_ID:
+            return CommandChannel.MEDIA_SEARCH
+
+        if channel_id == Config.DISCORD_CHANNEL_ID:
+            return CommandChannel.GENERAL
 
         return None
 
     async def handle_message(self, message):
-        # Ignore bots (including ourselves)
+        # Ignore bots
         if message.author.bot:
             return
 
@@ -59,6 +62,16 @@ class CommandService:
 
         if channel is None:
             return
+
+        #
+        # MEDIA SEARCH
+        #
+        # Any non-command message becomes a !find command.
+        #
+        if channel == CommandChannel.MEDIA_SEARCH and not message.content.startswith(
+            "!"
+        ):
+            message.content = f"!find {message.content}"
 
         content = message.content.strip()
 
@@ -86,7 +99,6 @@ class CommandService:
 
                 return
 
-        # Ignore anything that isn't a command
         if not content.startswith("!"):
             return
 
@@ -104,6 +116,7 @@ class CommandService:
             return
 
         if channel not in command.CHANNELS:
+            logger.info(f"Command '{command_name}' not allowed in {channel.name}")
             return
 
         await command.execute(message)
