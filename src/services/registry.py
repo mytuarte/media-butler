@@ -12,5 +12,7 @@ class ServiceRegistry:
 
         self.search_channel = None
 
+        self.health_monitor = None
+
 
 services = ServiceRegistry()

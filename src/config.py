@@ -2,10 +2,19 @@ import os
 
 from dotenv import load_dotenv
 
-load_dotenv("config/.env")
+environment = os.getenv(
+    "MEDIA_BUTLER_ENV",
+    "dev",
+).lower()
+
+dotenv_file = "config/.env.dev" if environment == "dev" else "config/.env"
+
+load_dotenv(dotenv_file)
 
 
 class Config:
+    ENVIRONMENT = environment
+
     # Discord
     DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
     DISCORD_CHANNEL_ID = int(os.getenv("DISCORD_CHANNEL_ID"))

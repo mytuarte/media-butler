@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 from flask import Blueprint, jsonify
 
@@ -31,6 +32,56 @@ def initialize(
         return jsonify(
             {
                 "message": "Series printed to console.",
+            }
+        )
+
+    @debug_routes.get("/debug/sonarr/episode-files/<int:series_id>")
+    def debug_episode_files(series_id):
+        files = sonarr_service.get_episode_files(series_id)
+
+        if not files:
+            print("No episode files found.")
+
+            return jsonify(
+                {
+                    "message": "No episode files found.",
+                }
+            )
+
+        print(json.dumps(files[0], indent=4))
+
+        return jsonify(
+            {
+                "count": len(files),
+                "message": "First episode file printed to console.",
+            }
+        )
+
+    @debug_routes.get("/debug/sonarr/all-episode-files")
+    def debug_all_episode_files():
+        files = sonarr_service.get_all_episode_files()
+
+        print("\n" + "=" * 80)
+        print(f"Total Episode Files: {len(files)}")
+        print("=" * 80)
+
+        for file in files:
+            series = file.get("series", {})
+
+            if series.get("title") == "House of the Dragon":
+                print(
+                    f'{series["title"]} '
+                    f'S{file["seasonNumber"]:02d} '
+                    f'{file["size"] / (1024**3):.2f} GB '
+                    f'{file["quality"]["quality"]["name"]}'
+                )
+
+        print("=" * 80 + "\n")
+
+        return jsonify(
+            {
+                "count": len(files),
+                "message": "Episode files printed to console.",
             }
         )
 

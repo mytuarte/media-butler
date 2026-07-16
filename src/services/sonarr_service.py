@@ -14,6 +14,7 @@ from services.overseerr_service import OverseerrService
 class SonarrService:
     def __init__(self):
         self.overseerr = OverseerrService()
+        self._episode_cache: dict[int, list[dict]] = {}
 
     def parse_notification(self, payload: dict) -> MovieNotification:
         series = payload["series"]
@@ -47,6 +48,89 @@ class SonarrService:
 
         response = requests.get(
             f"{Config.SONARR_URL}/api/v3/series",
+            headers=headers,
+            timeout=10,
+        )
+
+        response.raise_for_status()
+
+        return response.json()
+
+    def get_episodes(
+        self,
+        series_id: int,
+    ):
+        if series_id in self._episode_cache:
+            return self._episode_cache[series_id]
+
+        headers = {
+            "X-Api-Key": Config.SONARR_API_KEY,
+        }
+
+        response = requests.get(
+            f"{Config.SONARR_URL}/api/v3/episode",
+            headers=headers,
+            params={
+                "seriesId": series_id,
+            },
+            timeout=10,
+        )
+
+        response.raise_for_status()
+
+        episodes = response.json()
+
+        self._episode_cache[series_id] = episodes
+
+        return episodes
+
+    def get_episode_files(
+        self,
+        series_id: int,
+    ):
+        headers = {
+            "X-Api-Key": Config.SONARR_API_KEY,
+        }
+
+        response = requests.get(
+            f"{Config.SONARR_URL}/api/v3/episodefile",
+            headers=headers,
+            params={
+                "seriesId": series_id,
+            },
+            timeout=10,
+        )
+
+        response.raise_for_status()
+
+        return response.json()
+
+    def get_all_episode_files(self):
+        files = []
+
+        for series in self.get_series():
+            try:
+                series_files = self.get_episode_files(
+                    series["id"],
+                )
+
+                for file in series_files:
+                    file["series"] = series
+
+                files.extend(series_files)
+
+            except Exception:
+                continue
+
+        return files
+
+    def get_history(self):
+        headers = {
+            "X-Api-Key": Config.SONARR_API_KEY,
+        }
+
+        response = requests.get(
+            f"{Config.SONARR_URL}/api/v3/history",
             headers=headers,
             timeout=10,
         )

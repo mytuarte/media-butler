@@ -16,6 +16,8 @@ class OverseerrService:
             "X-Api-Key": Config.OVERSEERR_API_KEY,
         }
 
+        self._request_lookup: dict[int, OverseerrRequest] | None = None
+
     def test_connection(self):
         return self.http.get(
             f"{Config.OVERSEERR_URL}/api/v1/status",
@@ -23,14 +25,38 @@ class OverseerrService:
         )
 
     def get_requests(self):
-        return self.http.get(
-            f"{Config.OVERSEERR_URL}/api/v1/request",
-            headers=self.headers,
-        )
+        page = 1
+        results = []
+
+        while True:
+            response = self.http.get(
+                f"{Config.OVERSEERR_URL}/api/v1/request",
+                headers=self.headers,
+                params={
+                    "take": 100,
+                    "skip": (page - 1) * 100,
+                },
+            )
+
+            results.extend(response["results"])
+
+            page_info = response["pageInfo"]
+
+            if page >= page_info["pages"]:
+                break
+
+            page += 1
+
+        return {
+            "results": results,
+        }
 
     def get_request_lookup(
         self,
     ) -> dict[int, OverseerrRequest]:
+        if self._request_lookup is not None:
+            return self._request_lookup
+
         requests = self.get_requests()
 
         lookup = {}
@@ -43,6 +69,8 @@ class OverseerrService:
                 continue
 
             lookup[tmdb_id] = OverseerrRequestFactory.from_api(request)
+
+        self._request_lookup = lookup
 
         return lookup
 

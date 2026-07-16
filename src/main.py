@@ -16,6 +16,7 @@ from routes.webhook_routes import (
 from services.delete_confirmation_service import DeleteConfirmationService
 from services.delete_service import DeleteService
 from services.discord_service import DiscordService
+from services.health_monitor_service import HealthMonitorService
 from services.notification_service import NotificationService
 from services.overseerr_service import OverseerrService
 from services.radarr_service import RadarrService
@@ -39,6 +40,8 @@ services.delete_confirmation = DeleteConfirmationService()
 services.delete = DeleteService()
 
 services.search_channel = SearchChannelService()
+
+services.health_monitor = HealthMonitorService()
 
 initialize_webhook_routes(
     services.notification,

@@ -6,6 +6,7 @@ from config import Config
 from models.notification import MovieNotification
 from services.command_service import CommandService
 from services.log_service import logger
+from services.registry import services
 
 
 class DiscordService:
@@ -21,7 +22,16 @@ class DiscordService:
 
         @self.client.event
         async def on_ready():
-            logger.info(f"Discord connected as {self.client.user}")
+            logger.info("=" * 50)
+            logger.info("Media Butler")
+            logger.info(f"Environment : {Config.ENVIRONMENT.upper()}")
+            logger.info(f"Discord Bot : {self.client.user}")
+            logger.info("=" * 50)
+
+            if services.health_monitor:
+                services.health_monitor.start()
+
+                logger.info("Health monitor started.")
 
         @self.client.event
         async def on_message(message):
@@ -43,6 +53,7 @@ class DiscordService:
 
     async def start(self):
         logger.info(f"Discord token loaded: {Config.DISCORD_TOKEN is not None}")
+
         logger.info("Connecting to Discord...")
 
         await self.client.start(Config.DISCORD_TOKEN)
@@ -90,4 +101,4 @@ class DiscordService:
             embed=embed,
         )
 
-        logger.info(f"Discord notification sent for " f"'{movie.title}'.")
+        logger.info(f"Discord notification sent for '{movie.title}'.")

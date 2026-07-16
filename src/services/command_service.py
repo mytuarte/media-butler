@@ -4,6 +4,7 @@ from commands.find_command import FindCommand
 from commands.help_command import HelpCommand
 from commands.info_command import InfoCommand
 from commands.ping_command import PingCommand
+from commands.recent_command import RecentCommand
 from commands.sab_command import SabCommand
 from commands.scenario_command import ScenarioCommand
 from commands.space_command import SpaceCommand
@@ -25,16 +26,17 @@ class CommandService:
         self.commands = {}
 
         # Register commands
-        self.register(PingCommand())
+        self.register(DeleteCommand())
+        self.register(DigitalCommand())
         self.register(FindCommand())
         self.register(InfoCommand())
-        self.register(DeleteCommand())
-        self.register(ScenarioCommand())
+        self.register(PingCommand())
+        self.register(RecentCommand())
         self.register(SabCommand())
+        self.register(ScenarioCommand())
         self.register(SpaceCommand())
         self.register(TrendingCommand())
         self.register(TrendingTvCommand())
-        self.register(DigitalCommand())
 
         self.register(HelpCommand(self.commands))
 
