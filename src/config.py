@@ -16,11 +16,14 @@ class Config:
     ENVIRONMENT = environment
 
     # Discord
+    # Discord
     DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
     DISCORD_CHANNEL_ID = int(os.getenv("DISCORD_CHANNEL_ID"))
     DISCORD_ADMIN_CHANNEL_ID = int(os.getenv("DISCORD_ADMIN_CHANNEL_ID"))
     DISCORD_MEDIA_SEARCH_CHANNEL_ID = int(os.getenv("DISCORD_MEDIA_SEARCH_CHANNEL_ID"))
-
+    DISCORD_MEDIA_ATTENTION_CHANNEL_ID = int(
+        os.getenv("DISCORD_MEDIA_ATTENTION_CHANNEL_ID")
+    )
     DELETE_SEARCH_MESSAGES = (
         os.getenv(
             "DELETE_SEARCH_MESSAGES",
