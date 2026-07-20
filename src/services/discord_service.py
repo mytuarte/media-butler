@@ -16,7 +16,9 @@ class DiscordService:
         intents = discord.Intents.default()
         intents.message_content = True
 
-        self.client = discord.Client(intents=intents)
+        self.client = discord.Client(
+            intents=intents,
+        )
 
         self.command_service = CommandService()
 
@@ -102,3 +104,35 @@ class DiscordService:
         )
 
         logger.info(f"Discord notification sent for '{movie.title}'.")
+
+    async def send_health_alert(
+        self,
+        embed: discord.Embed,
+    ) -> discord.Message:
+        channel = self.client.get_channel(Config.DISCORD_MEDIA_ATTENTION_CHANNEL_ID)
+
+        if channel is None:
+            raise RuntimeError("Media attention channel not found.")
+
+        message = await channel.send(
+            embed=embed,
+        )
+
+        return message
+
+    async def delete_health_alert(
+        self,
+        message_id: int,
+    ):
+        channel = self.client.get_channel(Config.DISCORD_MEDIA_ATTENTION_CHANNEL_ID)
+
+        if channel is None:
+            raise RuntimeError("Media attention channel not found.")
+
+        try:
+            message = await channel.fetch_message(message_id)
+
+            await message.delete()
+
+        except discord.NotFound:
+            pass

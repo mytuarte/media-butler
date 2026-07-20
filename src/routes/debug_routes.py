@@ -1,9 +1,12 @@
 import asyncio
 import json
+from datetime import datetime
 
 from flask import Blueprint, jsonify
 
+from models.health_issue import HealthIssue
 from services.scenario_service import ScenarioService
+from views.health_alert_view import HealthAlertView
 from views.movie_details_view import MovieDetailsView
 
 debug_routes = Blueprint(
@@ -23,6 +26,7 @@ def initialize(
     @debug_routes.get("/debug/sonarr")
     def debug_sonarr():
         sonarr_search_service.search("")
+
         return "Printed first Sonarr series to console."
 
     @debug_routes.get("/debug/sonarr/<title>")
@@ -54,34 +58,6 @@ def initialize(
             {
                 "count": len(files),
                 "message": "First episode file printed to console.",
-            }
-        )
-
-    @debug_routes.get("/debug/sonarr/all-episode-files")
-    def debug_all_episode_files():
-        files = sonarr_service.get_all_episode_files()
-
-        print("\n" + "=" * 80)
-        print(f"Total Episode Files: {len(files)}")
-        print("=" * 80)
-
-        for file in files:
-            series = file.get("series", {})
-
-            if series.get("title") == "House of the Dragon":
-                print(
-                    f'{series["title"]} '
-                    f'S{file["seasonNumber"]:02d} '
-                    f'{file["size"] / (1024**3):.2f} GB '
-                    f'{file["quality"]["quality"]["name"]}'
-                )
-
-        print("=" * 80 + "\n")
-
-        return jsonify(
-            {
-                "count": len(files),
-                "message": "Episode files printed to console.",
             }
         )
 
@@ -137,6 +113,30 @@ def initialize(
         future.result(timeout=10)
 
         return "Test notification sent!"
+
+    @debug_routes.get("/debug/test-health-alert")
+    def test_health_alert():
+        issue = HealthIssue(
+            title="Test Health Alert",
+            issue_type="test",
+            details=(
+                "This is a test health alert.\n"
+                "The Discord health alert pipeline is working."
+            ),
+            created_at=datetime.now(),
+            severity="warning",
+        )
+
+        embed = HealthAlertView.build(issue)
+
+        future = asyncio.run_coroutine_threadsafe(
+            discord_service.send_health_alert(embed),
+            discord_service.client.loop,
+        )
+
+        future.result(timeout=10)
+
+        return "Health alert test sent."
 
     @debug_routes.get("/debug/scenario/released-not-downloaded")
     def released_not_downloaded():

@@ -41,12 +41,7 @@ class SabnzbdClient:
 
     @staticmethod
     def _normalize(text: str) -> str:
-        return (
-            text.lower()
-            .replace(".", " ")
-            .replace("_", " ")
-            .replace("-", " ")
-        )
+        return text.lower().replace(".", " ").replace("_", " ").replace("-", " ")
 
     def get_download(
         self,
@@ -61,17 +56,30 @@ class SabnzbdClient:
         title = self._normalize(media_result.title)
 
         for slot in slots:
-            filename = self._normalize(
-                slot.get("filename", "")
-            )
+            filename = self._normalize(slot.get("filename", ""))
 
             if title not in filename:
                 continue
 
             return DownloadStatus(
-                state=slot.get("status", "Unknown"),
-                progress=int(slot.get("percentage", 0)),
-                eta=slot.get("timeleft", "Unknown"),
+                name=slot.get(
+                    "filename",
+                    "Unknown Download",
+                ),
+                state=slot.get(
+                    "status",
+                    "Unknown",
+                ),
+                progress=int(
+                    slot.get(
+                        "percentage",
+                        0,
+                    )
+                ),
+                eta=slot.get(
+                    "timeleft",
+                    "Unknown",
+                ),
             )
 
         return None
