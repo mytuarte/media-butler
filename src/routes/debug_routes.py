@@ -72,6 +72,17 @@ def initialize(
             }
         )
 
+    @debug_routes.get("/debug/radarr/pipeline/<int:movie_id>")
+    def debug_radarr_pipeline(movie_id):
+        history = radarr_service.get_recent_history(movie_id)
+
+        return jsonify(
+            {
+                "movie_id": movie_id,
+                "history": history,
+            }
+        )
+
     @debug_routes.get("/debug/overseerr/test")
     def overseerr_test():
         return jsonify(overseerr_service.test_connection())

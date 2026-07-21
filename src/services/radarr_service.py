@@ -23,12 +23,14 @@ class RadarrService:
         request = self.overseerr.get_request(tmdb_id)
 
         requester = None
+
         if request is not None:
             requester = request.requester
 
         quality = "Unknown"
 
         movie_file = payload.get("movieFile")
+
         if movie_file:
             quality = (
                 movie_file.get("quality", {}).get("quality", {}).get("name", "Unknown")
@@ -56,6 +58,44 @@ class RadarrService:
 
         return response.json()
 
+    def get_history(self):
+        headers = {
+            "X-Api-Key": Config.RADARR_API_KEY,
+        }
+
+        response = requests.get(
+            f"{Config.RADARR_URL}/api/v3/history",
+            headers=headers,
+            params={
+                "pageSize": 100,
+                "sortKey": "date",
+                "sortDirection": "descending",
+            },
+            timeout=10,
+        )
+
+        response.raise_for_status()
+
+        return response.json()
+
+    def get_recent_history(
+        self,
+        movie_id: int,
+        limit: int = 10,
+    ):
+        history = self.get_history()
+
+        records = [
+            item
+            for item in history.get(
+                "records",
+                [],
+            )
+            if item.get("movieId") == movie_id
+        ]
+
+        return records[:limit]
+
     def get_monitoring_states(
         self,
     ) -> dict[int, tuple[MonitoringState, str | None]]:
@@ -67,7 +107,10 @@ class RadarrService:
             if movie.get("tmdbId") is not None
         }
 
-    def delete_movie(self, movie_id: int):
+    def delete_movie(
+        self,
+        movie_id: int,
+    ):
         headers = {
             "X-Api-Key": Config.RADARR_API_KEY,
         }
@@ -84,20 +127,31 @@ class RadarrService:
 
         response.raise_for_status()
 
-    def debug_movie(self, title: str):
+    def debug_movie(
+        self,
+        title: str,
+    ):
         title = title.lower()
 
         for movie in self.get_movies():
-            if title in movie.get("title", "").lower():
+            if (
+                title
+                in movie.get(
+                    "title",
+                    "",
+                ).lower()
+            ):
                 print("\n" + "=" * 80)
                 print(f"{movie.get('title')} ({movie.get('year')})")
                 print("=" * 80)
-                print(json.dumps(movie, indent=4))
+                print(
+                    json.dumps(
+                        movie,
+                        indent=4,
+                    )
+                )
                 print("=" * 80 + "\n")
+
                 return
 
         print(f'No movie found matching "{title}"')
-
-
-if __name__ == "__main__":
-    RadarrService().debug_movie("Scream 3")

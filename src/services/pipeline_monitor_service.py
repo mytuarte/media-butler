@@ -73,7 +73,9 @@ class PipelineMonitorService:
             if not movie.get("isAvailable"):
                 continue
 
-            requested_date = self._get_request_date(request)
+            requested_date = self._get_request_date(
+                request,
+            )
 
             if requested_date is None:
                 continue
@@ -94,6 +96,10 @@ class PipelineMonitorService:
             ):
                 continue
 
+            history_details = self._build_history_details(
+                movie.get("id"),
+            )
+
             issues.append(
                 HealthIssue(
                     title=f"Pipeline Stalled: {title}",
@@ -109,6 +115,7 @@ class PipelineMonitorService:
                         "- Radarr Monitored: Yes\n"
                         "- File Exists: No\n"
                         "- Download Queue: Not Found\n\n"
+                        f"{history_details}\n\n"
                         "Possible causes:\n"
                         "- Radarr has not found a release\n"
                         "- Indexers returned no results\n"
@@ -121,11 +128,72 @@ class PipelineMonitorService:
 
         return issues
 
+    def _build_history_details(
+        self,
+        movie_id: int | None,
+    ) -> str:
+        if movie_id is None:
+            return "Radarr History:\n" "Movie ID unavailable."
+
+        history = self.radarr.get_recent_history(
+            movie_id,
+        )
+
+        if not history:
+            return "Radarr History:\n" "No recent activity found."
+
+        latest = history[0]
+
+        event = latest.get(
+            "eventType",
+            "Unknown",
+        )
+
+        date = latest.get(
+            "date",
+            "Unknown",
+        )
+
+        data = latest.get(
+            "data",
+            {},
+        )
+
+        release_group = data.get(
+            "releaseGroup",
+            "Unknown",
+        )
+
+        client = data.get(
+            "downloadClientName",
+            "Unknown",
+        )
+
+        message = latest.get(
+            "message",
+            "",
+        )
+
+        details = (
+            "Radarr History:\n"
+            f"Last Event: {event}\n"
+            f"Date: {date}\n"
+            f"Release Group: {release_group}\n"
+            f"Download Client: {client}"
+        )
+
+        if message:
+            details += f"\nDetails: {message}"
+
+        return details
+
     def _get_request_date(
         self,
         request: dict,
     ) -> datetime | None:
-        requested_date = request.get("createdAt")
+        requested_date = request.get(
+            "createdAt",
+        )
 
         if requested_date is None:
             return None
