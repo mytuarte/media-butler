@@ -69,6 +69,7 @@ class TrendingMoviesServiceTests(unittest.TestCase):
                 tmdb_id=1,
                 release_date=(date.today() - timedelta(days=1)).isoformat(),
                 monitoring_state=status,
+                status_detail=("Released" if status == MonitoringState.NOT_ADDED else None),
             )
         ]
 
@@ -128,6 +129,7 @@ class TrendingMoviesServiceTests(unittest.TestCase):
                 "movie",
                 2,
                 release_date=(date.today() - timedelta(days=1)).isoformat(),
+                status_detail="Released",
             )
         ]
         self.run_cycle(service, ranked_differently)
@@ -145,6 +147,7 @@ class TrendingMoviesServiceTests(unittest.TestCase):
             tmdb_id=1,
             release_date=(date.today() - timedelta(days=1)).isoformat(),
             requester="Example User",
+            status_detail="Released",
         )
 
         self.run_cycle(service, [requested_movie])
@@ -257,8 +260,6 @@ class TrendingMoviesServiceTests(unittest.TestCase):
             media_type="movie",
             tmdb_id=2,
             release_date=date.today().isoformat(),
-            monitoring_state=MonitoringState.COMING_SOON,
-            status_detail="In Theaters",
         )
 
         self.run_cycle(service, self.movies() + [theatrical_movie])
