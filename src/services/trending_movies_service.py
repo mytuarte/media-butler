@@ -1,7 +1,7 @@
 import asyncio
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from config import Config
@@ -58,6 +58,7 @@ class TrendingMoviesService:
             return
 
         movies = await asyncio.to_thread(self.discovery.get_trending_movies)
+        movies = self._released_movies(movies)
         fingerprint = self._fingerprint(movies)
 
         if self.state is not None:
@@ -114,6 +115,25 @@ class TrendingMoviesService:
         )
 
         return hashlib.sha256(serialized.encode()).hexdigest()
+
+    @staticmethod
+    def _released_movies(movies: list[DiscoveryItem]) -> list[DiscoveryItem]:
+        """Exclude announced and future movies from the right-now dashboard."""
+        released_movies = []
+
+        for movie in movies:
+            if movie.release_date is None:
+                continue
+
+            try:
+                release_date = date.fromisoformat(movie.release_date)
+            except ValueError:
+                continue
+
+            if release_date <= date.today():
+                released_movies.append(movie)
+
+        return released_movies
 
     def _load_state(self) -> TrendingMoviesState | None:
         if not self.STATE_FILE.exists():

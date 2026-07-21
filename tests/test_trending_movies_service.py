@@ -2,6 +2,7 @@ import asyncio
 import json
 import tempfile
 import unittest
+from datetime import date, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -66,6 +67,7 @@ class TrendingMoviesServiceTests(unittest.TestCase):
                 title="Example Movie",
                 media_type="movie",
                 tmdb_id=1,
+                release_date=(date.today() - timedelta(days=1)).isoformat(),
                 monitoring_state=status,
             )
         ]
@@ -121,7 +123,12 @@ class TrendingMoviesServiceTests(unittest.TestCase):
         service = self.create_service()
         original = self.movies()
         ranked_differently = original + [
-            DiscoveryItem("Another Movie", "movie", 2)
+            DiscoveryItem(
+                "Another Movie",
+                "movie",
+                2,
+                release_date=(date.today() - timedelta(days=1)).isoformat(),
+            )
         ]
         self.run_cycle(service, ranked_differently)
 
@@ -136,6 +143,7 @@ class TrendingMoviesServiceTests(unittest.TestCase):
             title="Example Movie",
             media_type="movie",
             tmdb_id=1,
+            release_date=(date.today() - timedelta(days=1)).isoformat(),
             requester="Example User",
         )
 
@@ -172,7 +180,7 @@ class TrendingMoviesServiceTests(unittest.TestCase):
             title=original.title,
             media_type=original.media_type,
             tmdb_id=original.tmdb_id,
-            release_date="2026-01-01",
+            release_date=original.release_date,
             poster_url="https://example.test/poster.jpg",
             overview="Changed overview",
         )
@@ -181,6 +189,53 @@ class TrendingMoviesServiceTests(unittest.TestCase):
             TrendingMoviesService._fingerprint([original]),
             TrendingMoviesService._fingerprint([changed]),
         )
+
+    def test_released_movie_appears_in_dashboard(self):
+        service = self.create_service()
+
+        self.run_cycle(service, self.movies())
+
+        self.assertEqual(self.discord.sent[0].description, "⚪ Example Movie")
+
+    def test_future_release_movie_is_excluded_from_dashboard(self):
+        service = self.create_service()
+        future_movie = DiscoveryItem(
+            title="Future Movie",
+            media_type="movie",
+            tmdb_id=2,
+            release_date=(date.today() + timedelta(days=1)).isoformat(),
+        )
+
+        self.run_cycle(service, self.movies() + [future_movie])
+
+        self.assertEqual(self.discord.sent[0].description, "⚪ Example Movie")
+
+    def test_announced_movie_is_excluded_from_dashboard(self):
+        service = self.create_service()
+        announced_movie = DiscoveryItem(
+            title="Announced Movie",
+            media_type="movie",
+            tmdb_id=2,
+        )
+
+        self.run_cycle(service, self.movies() + [announced_movie])
+
+        self.assertEqual(self.discord.sent[0].description, "⚪ Example Movie")
+
+    def test_upcoming_movie_does_not_change_dashboard_fingerprint(self):
+        service = self.create_service()
+        released_movies = self.movies()
+        future_movie = DiscoveryItem(
+            title="Future Movie",
+            media_type="movie",
+            tmdb_id=2,
+            release_date=(date.today() + timedelta(days=1)).isoformat(),
+        )
+        self.run_cycle(service, released_movies)
+
+        self.run_cycle(service, released_movies + [future_movie])
+
+        self.assertEqual(self.discord.updated, [])
 
     def test_start_is_disabled_without_a_trending_movies_channel(self):
         service = self.create_service()
