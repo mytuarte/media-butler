@@ -2,6 +2,7 @@ import asyncio
 import json
 import tempfile
 import unittest
+from datetime import date, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -66,6 +67,7 @@ class TrendingMoviesServiceTests(unittest.TestCase):
                 title="Example Movie",
                 media_type="movie",
                 tmdb_id=1,
+                release_date=(date.today() - timedelta(days=1)).isoformat(),
                 monitoring_state=status,
             )
         ]
@@ -83,7 +85,7 @@ class TrendingMoviesServiceTests(unittest.TestCase):
         self.assertEqual(len(self.discord.sent), 1)
         self.assertEqual(
             self.discord.sent[0].title,
-            "🎬 Upcoming Movie Watchlist",
+            "🔥 Trending Movies Right Now",
         )
         self.assertEqual(service.state.message_id, 101)
         self.assertEqual(
@@ -113,9 +115,41 @@ class TrendingMoviesServiceTests(unittest.TestCase):
         self.assertEqual(self.discord.updated[0][0], 101)
         self.assertEqual(
             self.discord.updated[0][1].title,
-            "🎬 Upcoming Movie Watchlist",
+            "🔥 Trending Movies Right Now",
         )
         self.assertEqual(service.state.message_id, 101)
+
+    def test_changed_ranking_edits_existing_dashboard_message(self):
+        service = self.create_service()
+        original = self.movies()
+        ranked_differently = original + [
+            DiscoveryItem(
+                "Another Movie",
+                "movie",
+                2,
+                release_date=(date.today() - timedelta(days=1)).isoformat(),
+            )
+        ]
+        self.run_cycle(service, ranked_differently)
+
+        self.run_cycle(service, list(reversed(ranked_differently)))
+
+        self.assertEqual(self.discord.updated[0][0], 101)
+
+    def test_overseerr_request_changes_visible_status_and_updates_message(self):
+        service = self.create_service()
+        self.run_cycle(service, self.movies())
+        requested_movie = DiscoveryItem(
+            title="Example Movie",
+            media_type="movie",
+            tmdb_id=1,
+            release_date=(date.today() - timedelta(days=1)).isoformat(),
+            requester="Example User",
+        )
+
+        self.run_cycle(service, [requested_movie])
+
+        self.assertEqual(self.discord.updated[0][1].description, "🟡 Example Movie")
 
     def test_missing_dashboard_message_is_replaced(self):
         service = self.create_service()
@@ -146,16 +180,105 @@ class TrendingMoviesServiceTests(unittest.TestCase):
             title=original.title,
             media_type=original.media_type,
             tmdb_id=original.tmdb_id,
-            release_date="2026-01-01",
+            release_date=original.release_date,
             poster_url="https://example.test/poster.jpg",
             overview="Changed overview",
-            requester="Example User",
         )
 
         self.assertEqual(
             TrendingMoviesService._fingerprint([original]),
             TrendingMoviesService._fingerprint([changed]),
         )
+
+    def test_released_movie_appears_in_dashboard(self):
+        service = self.create_service()
+
+        self.run_cycle(service, self.movies())
+
+        self.assertEqual(self.discord.sent[0].description, "⚪ Example Movie")
+
+    def test_digitally_released_movie_appears_in_dashboard(self):
+        service = self.create_service()
+        digital_movie = DiscoveryItem(
+            title="Digital Movie",
+            media_type="movie",
+            tmdb_id=2,
+            release_date=date.today().isoformat(),
+            monitoring_state=MonitoringState.COMING_SOON,
+            status_detail="Released",
+        )
+
+        self.run_cycle(service, [digital_movie])
+
+        self.assertEqual(self.discord.sent[0].description, "🟡 Digital Movie")
+
+    def test_plex_owned_movie_appears_without_a_release_date(self):
+        service = self.create_service()
+        plex_movie = DiscoveryItem(
+            title="Plex Movie",
+            media_type="movie",
+            tmdb_id=2,
+            monitoring_state=MonitoringState.AVAILABLE,
+        )
+
+        self.run_cycle(service, [plex_movie])
+
+        self.assertEqual(self.discord.sent[0].description, "🟢 Plex Movie")
+
+    def test_future_release_movie_is_excluded_from_dashboard(self):
+        service = self.create_service()
+        future_movie = DiscoveryItem(
+            title="Future Movie",
+            media_type="movie",
+            tmdb_id=2,
+            release_date=(date.today() + timedelta(days=1)).isoformat(),
+        )
+
+        self.run_cycle(service, self.movies() + [future_movie])
+
+        self.assertEqual(self.discord.sent[0].description, "⚪ Example Movie")
+
+    def test_announced_movie_is_excluded_from_dashboard(self):
+        service = self.create_service()
+        announced_movie = DiscoveryItem(
+            title="Announced Movie",
+            media_type="movie",
+            tmdb_id=2,
+        )
+
+        self.run_cycle(service, self.movies() + [announced_movie])
+
+        self.assertEqual(self.discord.sent[0].description, "⚪ Example Movie")
+
+    def test_in_theaters_only_movie_is_excluded_from_dashboard(self):
+        service = self.create_service()
+        theatrical_movie = DiscoveryItem(
+            title="The Odyssey",
+            media_type="movie",
+            tmdb_id=2,
+            release_date=date.today().isoformat(),
+            monitoring_state=MonitoringState.COMING_SOON,
+            status_detail="In Theaters",
+        )
+
+        self.run_cycle(service, self.movies() + [theatrical_movie])
+
+        self.assertEqual(self.discord.sent[0].description, "⚪ Example Movie")
+
+    def test_upcoming_movie_does_not_change_dashboard_fingerprint(self):
+        service = self.create_service()
+        released_movies = self.movies()
+        future_movie = DiscoveryItem(
+            title="Future Movie",
+            media_type="movie",
+            tmdb_id=2,
+            release_date=(date.today() + timedelta(days=1)).isoformat(),
+        )
+        self.run_cycle(service, released_movies)
+
+        self.run_cycle(service, released_movies + [future_movie])
+
+        self.assertEqual(self.discord.updated, [])
 
     def test_start_is_disabled_without_a_trending_movies_channel(self):
         service = self.create_service()

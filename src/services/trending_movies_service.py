@@ -1,21 +1,22 @@
 import asyncio
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from config import Config
 from models.discovery.discovery_item import DiscoveryItem
+from models.monitoring_state import MonitoringState
 from models.trending_movies_state import TrendingMoviesState
 from services.discovery.discovery_service import DiscoveryService
 from services.log_service import logger
 from services.registry import services
-from views.media_list_view import MediaListView
+from views.trending_movies_view import TrendingMoviesView
 
 
 class TrendingMoviesService:
     STATE_FILE = Path("data/trending_movies.json")
-    DASHBOARD_TITLE = "🎬 Upcoming Movie Watchlist"
+    DASHBOARD_TITLE = TrendingMoviesView.TITLE
 
     def __init__(self):
         self.discovery = DiscoveryService()
@@ -58,6 +59,7 @@ class TrendingMoviesService:
             return
 
         movies = await asyncio.to_thread(self.discovery.get_trending_movies)
+        movies = self._watchable_movies(movies)
         fingerprint = self._fingerprint(movies)
 
         if self.state is not None:
@@ -69,10 +71,7 @@ class TrendingMoviesService:
                 return
 
             if not message_exists:
-                embed = MediaListView.build(
-                    self.DASHBOARD_TITLE,
-                    movies,
-                )
+                embed = TrendingMoviesView.build(movies)
                 message = await services.discord.send_trending_movies(embed)
                 self._save_state(fingerprint, message.id)
                 return
@@ -80,10 +79,7 @@ class TrendingMoviesService:
             if message_exists and self.state.fingerprint == fingerprint:
                 return
 
-        embed = MediaListView.build(
-            self.DASHBOARD_TITLE,
-            movies,
-        )
+        embed = TrendingMoviesView.build(movies)
 
         if self.state is None:
             message = await services.discord.send_trending_movies(embed)
@@ -109,8 +105,7 @@ class TrendingMoviesService:
             {
                 "tmdb_id": movie.tmdb_id,
                 "title": movie.title,
-                "monitoring_state": movie.monitoring_state.name,
-                "status_detail": movie.status_detail,
+                "availability": TrendingMoviesView.status(movie),
             }
             for movie in movies
         ]
@@ -121,6 +116,32 @@ class TrendingMoviesService:
         )
 
         return hashlib.sha256(serialized.encode()).hexdigest()
+
+    @staticmethod
+    def _watchable_movies(movies: list[DiscoveryItem]) -> list[DiscoveryItem]:
+        """Exclude movies that are announced, unreleased, or only in theaters."""
+        watchable_movies = []
+
+        for movie in movies:
+            if movie.monitoring_state == MonitoringState.AVAILABLE:
+                watchable_movies.append(movie)
+                continue
+
+            if movie.status_detail in {"Announced", "In Theaters"}:
+                continue
+
+            if movie.release_date is None:
+                continue
+
+            try:
+                release_date = date.fromisoformat(movie.release_date)
+            except ValueError:
+                continue
+
+            if release_date <= date.today():
+                watchable_movies.append(movie)
+
+        return watchable_movies
 
     def _load_state(self) -> TrendingMoviesState | None:
         if not self.STATE_FILE.exists():
