@@ -1,7 +1,7 @@
 import asyncio
 import hashlib
 import json
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 from config import Config
@@ -16,6 +16,7 @@ from views.trending_movies_view import TrendingMoviesView
 class TrendingMoviesService:
     STATE_FILE = Path("data/trending_movies.json")
     DASHBOARD_TITLE = TrendingMoviesView.TITLE
+    DASHBOARD_MOVIE_LIMIT = 20
 
     def __init__(self):
         self.discovery = DiscoveryService()
@@ -57,8 +58,19 @@ class TrendingMoviesService:
             logger.warning("Trending movies scheduler cannot send without Discord.")
             return
 
-        movies = await asyncio.to_thread(self.discovery.get_trending_movies)
-        movies = self._currently_trending_movies(movies)
+        movies, candidate_count = await asyncio.to_thread(
+            self.discovery.get_watchable_trending_movies
+        )
+        digitally_available_count = len(movies)
+        movies = movies[: self.DASHBOARD_MOVIE_LIMIT]
+        logger.info(
+            "Trending candidates fetched: %s; Movies with digital availability: %s; "
+            "Movies displayed: %s; Streaming availability criteria: TMDB US "
+            "flatrate, rent, or buy providers.",
+            candidate_count,
+            digitally_available_count,
+            len(movies),
+        )
         fingerprint = self._fingerprint(movies)
 
         if self.state is not None:
@@ -115,32 +127,6 @@ class TrendingMoviesService:
         )
 
         return hashlib.sha256(serialized.encode()).hexdigest()
-
-    @staticmethod
-    def _currently_trending_movies(movies: list[DiscoveryItem]) -> list[DiscoveryItem]:
-        """Keep released movies from TMDB's popularity-ranked source list.
-
-        Radarr, Plex, and request data describe Media Butler's relationship to
-        a movie and are intentionally retained only for the dashboard status
-        indicator.  A missing or future TMDB release date instead identifies
-        announced or unreleased titles that do not belong in this view.
-        """
-        today = datetime.now(timezone.utc).date()
-        return [
-            movie
-            for movie in movies
-            if TrendingMoviesService._is_released_on_or_before(movie, today)
-        ]
-
-    @staticmethod
-    def _is_released_on_or_before(movie: DiscoveryItem, today: date) -> bool:
-        if movie.release_date is None:
-            return False
-
-        try:
-            return date.fromisoformat(movie.release_date) <= today
-        except ValueError:
-            return False
 
     def _load_state(self) -> TrendingMoviesState | None:
         if not self.STATE_FILE.exists():
