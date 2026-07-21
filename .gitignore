@@ -17,4 +17,7 @@ config/config.yaml
 # Database
 data/database.db
 
+#health log
+data/health_alerts.json
+
 .ssh/

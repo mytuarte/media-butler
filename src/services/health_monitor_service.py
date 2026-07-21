@@ -1,5 +1,7 @@
 import asyncio
+import json
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from models.health_issue import HealthIssue
 from services.registry import services
@@ -9,6 +11,7 @@ from views.health_alert_view import HealthAlertView
 
 class HealthMonitorService:
     STALL_THRESHOLD_MINUTES = 5
+    HEALTH_STATE_FILE = Path("data/health_alerts.json")
 
     def __init__(self):
         self.sabnzbd = SabnzbdClient()
@@ -23,7 +26,7 @@ class HealthMonitorService:
         self.alert_messages: dict[
             str,
             int,
-        ] = {}
+        ] = self._load_alert_state()
 
         self._task = None
         self.running = False
@@ -67,7 +70,23 @@ class HealthMonitorService:
 
         issues: list[HealthIssue] = []
 
-        queue = self.sabnzbd.get_queue()
+        try:
+            queue = self.sabnzbd.get_queue()
+
+        except Exception as error:
+            now = datetime.now()
+
+            issues.append(
+                HealthIssue(
+                    title="SABnzbd Offline",
+                    issue_type="service",
+                    details=("Unable to connect to SABnzbd.\n" f"Error: {error}"),
+                    created_at=now,
+                    severity="critical",
+                )
+            )
+
+            return issues
 
         slots = queue.get("queue", {}).get("slots", [])
 
@@ -142,9 +161,14 @@ class HealthMonitorService:
 
         previous_titles = set(self.active_issues.keys())
 
-        new_issues = [issue for issue in issues if issue.title not in previous_titles]
+        new_issues = [
+            issue
+            for issue in issues
+            if issue.title not in previous_titles
+            and issue.title not in self.alert_messages
+        ]
 
-        resolved_issues = previous_titles - current_titles
+        resolved_issues = set(self.alert_messages.keys()) - current_titles
 
         for issue in new_issues:
             await self._send_alert(issue)
@@ -167,6 +191,8 @@ class HealthMonitorService:
 
         self.alert_messages[issue.title] = message.id
 
+        self._save_alert_state()
+
     async def _remove_alert(
         self,
         title: str,
@@ -183,6 +209,46 @@ class HealthMonitorService:
             return
 
         await services.discord.delete_health_alert(message_id)
+
+        self._save_alert_state()
+
+    def _load_alert_state(self) -> dict[str, int]:
+        if not self.HEALTH_STATE_FILE.exists():
+            return {}
+
+        try:
+            with open(
+                self.HEALTH_STATE_FILE,
+                "r",
+            ) as file:
+                data = json.load(file)
+
+            return {title: int(message_id) for title, message_id in data.items()}
+
+        except Exception as error:
+            print(f"[Health Monitor] Failed to load alert state: {error}")
+
+            return {}
+
+    def _save_alert_state(self):
+        try:
+            self.HEALTH_STATE_FILE.parent.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
+
+            with open(
+                self.HEALTH_STATE_FILE,
+                "w",
+            ) as file:
+                json.dump(
+                    self.alert_messages,
+                    file,
+                    indent=4,
+                )
+
+        except Exception as error:
+            print(f"[Health Monitor] Failed to save alert state: {error}")
 
     def _track_progress(
         self,
