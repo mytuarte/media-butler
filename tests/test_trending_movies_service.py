@@ -83,7 +83,7 @@ class TrendingMoviesServiceTests(unittest.TestCase):
         self.assertEqual(len(self.discord.sent), 1)
         self.assertEqual(
             self.discord.sent[0].title,
-            "🎬 Upcoming Movie Watchlist",
+            "🔥 Trending Movies Right Now",
         )
         self.assertEqual(service.state.message_id, 101)
         self.assertEqual(
@@ -113,9 +113,35 @@ class TrendingMoviesServiceTests(unittest.TestCase):
         self.assertEqual(self.discord.updated[0][0], 101)
         self.assertEqual(
             self.discord.updated[0][1].title,
-            "🎬 Upcoming Movie Watchlist",
+            "🔥 Trending Movies Right Now",
         )
         self.assertEqual(service.state.message_id, 101)
+
+    def test_changed_ranking_edits_existing_dashboard_message(self):
+        service = self.create_service()
+        original = self.movies()
+        ranked_differently = original + [
+            DiscoveryItem("Another Movie", "movie", 2)
+        ]
+        self.run_cycle(service, ranked_differently)
+
+        self.run_cycle(service, list(reversed(ranked_differently)))
+
+        self.assertEqual(self.discord.updated[0][0], 101)
+
+    def test_overseerr_request_changes_visible_status_and_updates_message(self):
+        service = self.create_service()
+        self.run_cycle(service, self.movies())
+        requested_movie = DiscoveryItem(
+            title="Example Movie",
+            media_type="movie",
+            tmdb_id=1,
+            requester="Example User",
+        )
+
+        self.run_cycle(service, [requested_movie])
+
+        self.assertEqual(self.discord.updated[0][1].description, "🟡 Example Movie")
 
     def test_missing_dashboard_message_is_replaced(self):
         service = self.create_service()
@@ -149,7 +175,6 @@ class TrendingMoviesServiceTests(unittest.TestCase):
             release_date="2026-01-01",
             poster_url="https://example.test/poster.jpg",
             overview="Changed overview",
-            requester="Example User",
         )
 
         self.assertEqual(

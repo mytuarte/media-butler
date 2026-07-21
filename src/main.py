@@ -26,6 +26,7 @@ from services.search.sonarr_search_service import SonarrSearchService
 from services.search_channel_service import SearchChannelService
 from services.sonarr_service import SonarrService
 from services.trending_movies_service import TrendingMoviesService
+from services.upcoming_movie_watchlist_service import UpcomingMovieWatchlistService
 
 app = Flask(__name__)
 
@@ -48,6 +49,7 @@ services.delete = DeleteService()
 services.search_channel = SearchChannelService()
 
 services.health_monitor = HealthMonitorService()
+services.upcoming_movie_watchlist = UpcomingMovieWatchlistService()
 services.trending_movies = TrendingMoviesService()
 
 
