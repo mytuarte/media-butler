@@ -7,6 +7,8 @@ from services.sonarr_service import SonarrService
 
 
 class DiscoveryService:
+    TRENDING_MOVIE_CANDIDATE_PAGES = 5
+
     def __init__(self):
         self.tmdb = TmdbService()
         self.radarr = RadarrService()
@@ -19,6 +21,24 @@ class DiscoveryService:
         self._enrich(items)
 
         return items
+
+    def get_watchable_trending_movies(self) -> tuple[list[DiscoveryItem], int]:
+        """Get enough ranked candidates to fill the digital-only dashboard.
+
+        Provider filtering is deliberately performed before local-state
+        enrichment: Plex, Radarr, and Overseerr only determine the status icon
+        after TMDB has established that the movie is watchable digitally.
+        """
+        candidates = self.tmdb.get_trending_movies(
+            pages=self.TRENDING_MOVIE_CANDIDATE_PAGES
+        )
+        watchable = [
+            movie
+            for movie in candidates
+            if self.tmdb.movie_has_digital_availability(movie.tmdb_id)
+        ]
+        self._enrich(watchable)
+        return watchable, len(candidates)
 
     def get_trending_tv(self) -> list[DiscoveryItem]:
         items = self.tmdb.get_trending_tv()
