@@ -62,6 +62,7 @@ class TrendingMoviesService:
             self.discovery.get_watchable_trending_movies
         )
         digitally_available_count = len(movies)
+        movies = self._deduplicate_by_tmdb_id(movies)
         movies = movies[: self.DASHBOARD_MOVIE_LIMIT]
         logger.info(
             "Trending candidates fetched: %s; Movies with digital availability: %s; "
@@ -109,6 +110,23 @@ class TrendingMoviesService:
         if updated is False:
             message = await services.discord.send_trending_movies(embed)
             self._save_state(fingerprint, message.id)
+
+    @staticmethod
+    def _deduplicate_by_tmdb_id(
+        movies: list[DiscoveryItem],
+    ) -> list[DiscoveryItem]:
+        """Keep each TMDB movie once while retaining popularity order."""
+        seen_tmdb_ids = set()
+        unique_movies = []
+
+        for movie in movies:
+            if movie.tmdb_id in seen_tmdb_ids:
+                continue
+
+            seen_tmdb_ids.add(movie.tmdb_id)
+            unique_movies.append(movie)
+
+        return unique_movies
 
     @staticmethod
     def _fingerprint(movies: list[DiscoveryItem]) -> str:

@@ -199,6 +199,39 @@ class TrendingMoviesServiceTests(unittest.TestCase):
 
         self.assertEqual(self.discord.sent[0].description, "⚪ Example Movie")
 
+    def test_duplicate_tmdb_ids_appear_once_in_first_occurrence_order(self):
+        service = self.create_service()
+        movies = [
+            DiscoveryItem("Michael", "movie", 123),
+            DiscoveryItem("The Batman", "movie", 456),
+            DiscoveryItem("Michael", "movie", 123),
+        ]
+
+        self.run_cycle(service, movies)
+
+        self.assertEqual(
+            self.discord.sent[0].description,
+            "⚪ Michael\n⚪ The Batman",
+        )
+        self.assertEqual(
+            service.state.fingerprint,
+            service._fingerprint(movies[:2]),
+        )
+
+    def test_same_title_with_different_tmdb_ids_both_appear(self):
+        service = self.create_service()
+        movies = [
+            DiscoveryItem("The Thing", "movie", 1),
+            DiscoveryItem("The Thing", "movie", 2),
+        ]
+
+        self.run_cycle(service, movies)
+
+        self.assertEqual(
+            self.discord.sent[0].description,
+            "⚪ The Thing\n⚪ The Thing",
+        )
+
     def test_dashboard_keeps_a_useful_twenty_movie_list(self):
         service = self.create_service()
         movies = [
