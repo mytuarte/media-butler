@@ -1,0 +1,58 @@
+import discord
+
+from models.space_result import SpaceResult
+from utils.formatting import format_size
+
+
+class LargestSeriesView:
+    MAX_TITLE_LENGTH = 42
+
+    @classmethod
+    def _truncate(cls, title: str) -> str:
+        if len(title) <= cls.MAX_TITLE_LENGTH:
+            return title
+
+        return title[: cls.MAX_TITLE_LENGTH - 3] + "..."
+
+    @classmethod
+    def build(cls, result: SpaceResult):
+        embed = discord.Embed(
+            title="📺 Top 20 Largest Series",
+            color=discord.Color.gold(),
+        )
+
+        if not result.largest_series:
+            embed.description = "No series found."
+
+            embed.set_footer(
+                text="Media Butler"
+            )
+
+            return embed
+
+        lines = [
+            "```",
+            "#  Size       Title",
+            "────────────────────────────────────────────────────────",
+        ]
+
+        for index, series in enumerate(
+            result.largest_series,
+            start=1,
+        ):
+            title = cls._truncate(series.title)
+            size = format_size(series.size_bytes)
+
+            lines.append(
+                f"{index:>2} {size:>9}  {title}"
+            )
+
+        lines.append("```")
+
+        embed.description = "\n".join(lines)
+
+        embed.set_footer(
+            text="Media Butler"
+        )
+
+        return embed

@@ -3,23 +3,65 @@ import logging
 import discord
 
 from config import Config
+from models.health_issue import HealthIssue
 from models.notification import MovieNotification
+from services.command_service import CommandService
 from services.log_service import logger
+from services.registry import services
+from views.health_alert_view import HealthAlertView
 
 
 class DiscordService:
     def __init__(self):
-        logging.basicConfig(level=logging.DEBUG)
+        logging.basicConfig(level=logging.INFO)
 
         intents = discord.Intents.default()
-        self.client = discord.Client(intents=intents)
+        intents.message_content = True
+
+        self.client = discord.Client(
+            intents=intents,
+        )
+
+        self.command_service = CommandService()
 
         @self.client.event
         async def on_ready():
-            logger.info(f"Discord connected as {self.client.user}")
+            logger.info("=" * 50)
+            logger.info("Media Butler")
+            logger.info(f"Environment : {Config.ENVIRONMENT.upper()}")
+            logger.info(f"Discord Bot : {self.client.user}")
+            logger.info("=" * 50)
+
+            if services.health_monitor:
+                services.health_monitor.start()
+
+                logger.info("Health monitor started.")
+
+            if services.trending_movies:
+                if services.trending_movies.start():
+                    logger.info("Trending movies scheduler started.")
+
+        @self.client.event
+        async def on_message(message):
+            # Ignore messages from bots (including ourselves)
+            if message.author.bot:
+                return
+
+            # Only process messages in approved channels
+            allowed_channels = {
+                Config.DISCORD_CHANNEL_ID,
+                Config.DISCORD_ADMIN_CHANNEL_ID,
+                Config.DISCORD_MEDIA_SEARCH_CHANNEL_ID,
+            }
+
+            if message.channel.id not in allowed_channels:
+                return
+
+            await self.command_service.handle_message(message)
 
     async def start(self):
         logger.info(f"Discord token loaded: {Config.DISCORD_TOKEN is not None}")
+
         logger.info("Connecting to Discord...")
 
         await self.client.start(Config.DISCORD_TOKEN)
@@ -63,8 +105,159 @@ class DiscordService:
         embed.set_footer(text="Media Butler")
 
         await channel.send(
-            content=requester if isinstance(movie.requester, int) else None,
+            content=(requester if isinstance(movie.requester, int) else None),
             embed=embed,
-)
+        )
 
         logger.info(f"Discord notification sent for '{movie.title}'.")
+
+    async def send_embed(
+        self,
+        embed: discord.Embed,
+    ):
+        channel = self.client.get_channel(Config.DISCORD_CHANNEL_ID)
+
+        if channel is None:
+            raise RuntimeError("Discord channel not found.")
+
+        await channel.send(embed=embed)
+
+    async def send_health_alert(
+        self,
+        issue: HealthIssue,
+    ) -> discord.Message:
+        channel = self.client.get_channel(Config.DISCORD_MEDIA_ATTENTION_CHANNEL_ID)
+
+        if channel is None:
+            raise RuntimeError("Media attention channel not found.")
+
+        message = await channel.send(
+            embed=HealthAlertView.build(issue),
+        )
+
+        return message
+
+    async def send_trending_movies(
+        self,
+        embed: discord.Embed,
+    ) -> discord.Message:
+        channel = self._get_trending_movies_channel()
+
+        return await channel.send(embed=embed)
+
+    async def trending_movies_message_exists(
+        self,
+        message_id: int,
+    ) -> bool | None:
+        channel = self._get_trending_movies_channel()
+
+        try:
+            await channel.fetch_message(message_id)
+
+            return True
+
+        except discord.NotFound:
+            return False
+
+        except discord.HTTPException as error:
+            logger.warning(
+                "Unable to fetch trending movies message %s: %s",
+                message_id,
+                error,
+            )
+
+            return None
+
+    async def update_trending_movies(
+        self,
+        message_id: int,
+        embed: discord.Embed,
+    ) -> bool | None:
+        channel = self._get_trending_movies_channel()
+
+        try:
+            message = await channel.fetch_message(message_id)
+            await message.edit(embed=embed)
+
+            return True
+
+        except discord.NotFound:
+            return False
+
+        except discord.HTTPException as error:
+            logger.warning(
+                "Unable to update trending movies message %s: %s",
+                message_id,
+                error,
+            )
+
+            return None
+
+    def _get_trending_movies_channel(self):
+        channel_id = Config.DISCORD_TRENDING_MOVIES_CHANNEL_ID
+
+        if channel_id is None:
+            raise RuntimeError("Trending movies channel is not configured.")
+
+        channel = self.client.get_channel(channel_id)
+
+        if channel is None:
+            raise RuntimeError("Trending movies channel not found.")
+
+        return channel
+
+    async def update_health_alert(
+        self,
+        message_id: int,
+        issue: HealthIssue,
+    ) -> bool | None:
+        channel = self.client.get_channel(Config.DISCORD_MEDIA_ATTENTION_CHANNEL_ID)
+
+        if channel is None:
+            raise RuntimeError("Media attention channel not found.")
+
+        try:
+            message = await channel.fetch_message(message_id)
+            await message.edit(embed=HealthAlertView.build(issue))
+
+            return True
+
+        except discord.NotFound:
+            return False
+
+        except discord.HTTPException as error:
+            logger.warning(
+                "Unable to update health alert %s: %s",
+                message_id,
+                error,
+            )
+
+            return None
+
+    async def delete_health_alert(
+        self,
+        message_id: int,
+    ) -> bool:
+        channel = self.client.get_channel(Config.DISCORD_MEDIA_ATTENTION_CHANNEL_ID)
+
+        if channel is None:
+            raise RuntimeError("Media attention channel not found.")
+
+        try:
+            message = await channel.fetch_message(message_id)
+
+            await message.delete()
+
+            return True
+
+        except discord.NotFound:
+            return True
+
+        except discord.HTTPException as error:
+            logger.warning(
+                "Unable to delete health alert %s: %s",
+                message_id,
+                error,
+            )
+
+            return False

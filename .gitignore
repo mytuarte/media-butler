@@ -6,6 +6,7 @@ __pycache__/
 # Environment variables
 .env
 config/.env
+config/.env.dev
 
 # Logs
 logs/
@@ -15,5 +16,9 @@ config/config.yaml
 
 # Database
 data/database.db
+
+#health log
+data/health_alerts.json
+data/trending_movies.json
 
 .ssh/

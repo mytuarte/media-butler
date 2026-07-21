@@ -21,7 +21,10 @@ class HttpService:
 
         response.raise_for_status()
 
-        return response.json()
+        if response.content:
+            return response.json()
+
+        return None
 
     def get(
         self,
@@ -47,4 +50,17 @@ class HttpService:
             url,
             headers=headers,
             json=json,
+        )
+
+    def delete(
+        self,
+        url,
+        headers=None,
+        params=None,
+    ):
+        return self.request(
+            "DELETE",
+            url,
+            headers=headers,
+            params=params,
         )
