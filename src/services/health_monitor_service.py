@@ -61,6 +61,13 @@ class HealthMonitorService:
 
         issues.extend(self._check_downloads())
 
+        if services.pipeline_monitor:
+            try:
+                issues.extend(services.pipeline_monitor.check_movies())
+
+            except Exception as error:
+                print(f"[Health Monitor] Pipeline check failed: {error}")
+
         return issues
 
     def _check_downloads(self) -> list[HealthIssue]:
@@ -88,7 +95,13 @@ class HealthMonitorService:
 
             return issues
 
-        slots = queue.get("queue", {}).get("slots", [])
+        slots = queue.get(
+            "queue",
+            {},
+        ).get(
+            "slots",
+            [],
+        )
 
         print(f"[Health Monitor] SAB queue items: {len(slots)}")
 

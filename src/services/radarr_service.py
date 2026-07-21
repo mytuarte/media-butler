@@ -97,3 +97,7 @@ class RadarrService:
                 return
 
         print(f'No movie found matching "{title}"')
+
+
+if __name__ == "__main__":
+    RadarrService().debug_movie("Scream 3")

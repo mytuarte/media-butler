@@ -19,6 +19,7 @@ from services.discord_service import DiscordService
 from services.health_monitor_service import HealthMonitorService
 from services.notification_service import NotificationService
 from services.overseerr_service import OverseerrService
+from services.pipeline_monitor_service import PipelineMonitorService
 from services.radarr_service import RadarrService
 from services.registry import services
 from services.search.sonarr_search_service import SonarrSearchService
@@ -29,12 +30,16 @@ app = Flask(__name__)
 
 app.register_blueprint(system_routes)
 
+
 services.discord = DiscordService()
 services.notification = NotificationService(services.discord)
+
 services.radarr = RadarrService()
 services.sonarr = SonarrService()
 services.sonarr_search = SonarrSearchService()
 services.overseerr = OverseerrService()
+
+services.pipeline_monitor = PipelineMonitorService()
 
 services.delete_confirmation = DeleteConfirmationService()
 services.delete = DeleteService()
@@ -43,12 +48,14 @@ services.search_channel = SearchChannelService()
 
 services.health_monitor = HealthMonitorService()
 
+
 initialize_webhook_routes(
     services.notification,
     services.discord,
     services.radarr,
     services.sonarr,
 )
+
 
 initialize_debug_routes(
     services.discord,
@@ -57,7 +64,9 @@ initialize_debug_routes(
     services.sonarr_search,
     services.sonarr,
     services.radarr,
+    services.pipeline_monitor,
 )
+
 
 app.register_blueprint(webhook_routes)
 app.register_blueprint(debug_routes)

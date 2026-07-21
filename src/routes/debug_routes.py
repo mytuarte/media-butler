@@ -22,6 +22,7 @@ def initialize(
     sonarr_search_service,
     sonarr_service,
     radarr_service,
+    pipeline_monitor_service,
 ):
     @debug_routes.get("/debug/sonarr")
     def debug_sonarr():
@@ -100,6 +101,24 @@ def initialize(
         return jsonify(
             {
                 "message": "Request printed to console.",
+            }
+        )
+
+    @debug_routes.get("/debug/test-pipeline")
+    def test_pipeline():
+        issues = pipeline_monitor_service.check_movies()
+
+        return jsonify(
+            {
+                "count": len(issues),
+                "issues": [
+                    {
+                        "title": issue.title,
+                        "type": issue.issue_type,
+                        "details": issue.details,
+                    }
+                    for issue in issues
+                ],
             }
         )
 
