@@ -23,6 +23,7 @@ def initialize(
     sonarr_service,
     radarr_service,
     pipeline_monitor_service,
+    health_monitor_service,
 ):
     @debug_routes.get("/debug/sonarr")
     def debug_sonarr():
@@ -165,6 +166,32 @@ def initialize(
         future.result(timeout=10)
 
         return "Pipeline alert test sent."
+
+    @debug_routes.get("/debug/test-health-monitor-pipeline")
+    def test_health_monitor_pipeline():
+        issue = HealthIssue(
+            title="Pipeline Stalled: Monitor Test Movie",
+            issue_type="pipeline",
+            details=(
+                "Movie appears stuck in acquisition pipeline.\n\n"
+                "Movie: Monitor Test Movie\n"
+                "TMDb ID: 888888\n\n"
+                "Requested: 2026-07-01 12:00\n"
+                "Waiting: 20 days\n\n"
+                "Status:\n"
+                "- Released: Yes\n"
+                "- Digital Available: Yes\n"
+                "- Radarr Monitored: Yes\n"
+                "- File Exists: No\n"
+                "- Download Queue: Not Found"
+            ),
+            created_at=datetime.now(),
+            severity="warning",
+        )
+
+        health_monitor_service.add_test_issue(issue)
+
+        return "Health monitor test issue added."
 
     @debug_routes.get("/debug/test")
     def test():

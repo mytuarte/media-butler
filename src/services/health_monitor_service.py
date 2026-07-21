@@ -12,13 +12,19 @@ from views.health_alert_view import HealthAlertView
 
 class HealthMonitorService:
     STALL_THRESHOLD_MINUTES = 5
+    RESOLUTION_GRACE_CYCLES = 2
+
     HEALTH_STATE_FILE = Path("data/health_alerts.json")
 
     def __init__(self):
         self.sabnzbd = SabnzbdClient()
         self.pipeline = PipelineMonitorService()
 
+        self.forced_issues: list[HealthIssue] = []
+
         self.active_issues: dict[str, HealthIssue] = {}
+
+        self.missing_issue_cycles: dict[str, int] = {}
 
         self.download_progress: dict[
             str,
@@ -27,7 +33,7 @@ class HealthMonitorService:
 
         self.alert_messages: dict[
             str,
-            int,
+            dict,
         ] = self._load_alert_state()
 
         self._task = None
@@ -58,6 +64,8 @@ class HealthMonitorService:
     def check(self) -> list[HealthIssue]:
         issues: list[HealthIssue] = []
 
+        issues.extend(self.forced_issues)
+
         issues.extend(self._check_downloads())
 
         try:
@@ -67,6 +75,153 @@ class HealthMonitorService:
             print(f"[Health Monitor] Pipeline check failed: {error}")
 
         return issues
+
+    def add_test_issue(
+        self,
+        issue: HealthIssue,
+    ):
+        self.forced_issues = [
+            issue,
+        ]
+
+    def clear_test_issues(self):
+        self.forced_issues = []
+
+    async def _process_issues(
+        self,
+        issues: list[HealthIssue],
+    ):
+        current_titles = {issue.title for issue in issues}
+
+        previous_titles = set(self.active_issues.keys())
+
+        new_issues = [
+            issue
+            for issue in issues
+            if issue.title not in previous_titles
+            and issue.title not in self.alert_messages
+        ]
+
+        for issue in new_issues:
+            await self._send_alert(issue)
+
+        for title in list(self.alert_messages.keys()):
+            if title not in current_titles:
+                self.missing_issue_cycles[title] = (
+                    self.missing_issue_cycles.get(
+                        title,
+                        0,
+                    )
+                    + 1
+                )
+
+                if self.missing_issue_cycles[title] >= self.RESOLUTION_GRACE_CYCLES:
+                    await self._remove_alert(title)
+
+                    self.missing_issue_cycles.pop(
+                        title,
+                        None,
+                    )
+
+            else:
+                self.missing_issue_cycles.pop(
+                    title,
+                    None,
+                )
+
+        self.active_issues = {issue.title: issue for issue in issues}
+
+    async def _send_alert(
+        self,
+        issue: HealthIssue,
+    ):
+        if services.discord is None:
+            return
+
+        embed = HealthAlertView.build(issue)
+
+        message = await services.discord.send_health_alert(embed)
+
+        self.alert_messages[issue.title] = {
+            "message_id": message.id,
+            "issue_type": issue.issue_type,
+            "details": issue.details,
+            "created_at": issue.created_at.isoformat(),
+            "severity": issue.severity,
+        }
+
+        self._save_alert_state()
+
+    async def _remove_alert(
+        self,
+        title: str,
+    ):
+        alert = self.alert_messages.pop(
+            title,
+            None,
+        )
+
+        if alert is None:
+            return
+
+        if services.discord is None:
+            return
+
+        await services.discord.delete_health_alert(alert["message_id"])
+
+        self._save_alert_state()
+
+    def _load_alert_state(self) -> dict[str, dict]:
+        if not self.HEALTH_STATE_FILE.exists():
+            return {}
+
+        try:
+            with open(
+                self.HEALTH_STATE_FILE,
+                "r",
+            ) as file:
+                data = json.load(file)
+
+            migrated = {}
+
+            for title, value in data.items():
+                if isinstance(value, int):
+                    migrated[title] = {
+                        "message_id": value,
+                        "issue_type": "unknown",
+                        "details": "",
+                        "created_at": datetime.now().isoformat(),
+                        "severity": "warning",
+                    }
+                else:
+                    migrated[title] = value
+
+            return migrated
+
+        except Exception as error:
+            print(f"[Health Monitor] Failed to load alert state: {error}")
+
+            return {}
+
+    def _save_alert_state(self):
+        try:
+            self.HEALTH_STATE_FILE.parent.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
+
+            with open(
+                self.HEALTH_STATE_FILE,
+                "w",
+            ) as file:
+                json.dump(
+                    self.alert_messages,
+                    file,
+                    indent=4,
+                )
+
+        except Exception as error:
+            print(f"[Health Monitor] Failed to save alert state: {error}")
 
     def _check_downloads(self) -> list[HealthIssue]:
         issues: list[HealthIssue] = []
@@ -159,103 +314,6 @@ class HealthMonitorService:
                 )
 
         return issues
-
-    async def _process_issues(
-        self,
-        issues: list[HealthIssue],
-    ):
-        current_titles = {issue.title for issue in issues}
-
-        previous_titles = set(self.active_issues.keys())
-
-        new_issues = [
-            issue
-            for issue in issues
-            if issue.title not in previous_titles
-            and issue.title not in self.alert_messages
-        ]
-
-        resolved_issues = set(self.alert_messages.keys()) - current_titles
-
-        for issue in new_issues:
-            await self._send_alert(issue)
-
-        for title in resolved_issues:
-            await self._remove_alert(title)
-
-        self.active_issues = {issue.title: issue for issue in issues}
-
-    async def _send_alert(
-        self,
-        issue: HealthIssue,
-    ):
-        if services.discord is None:
-            return
-
-        embed = HealthAlertView.build(issue)
-
-        message = await services.discord.send_health_alert(embed)
-
-        self.alert_messages[issue.title] = message.id
-
-        self._save_alert_state()
-
-    async def _remove_alert(
-        self,
-        title: str,
-    ):
-        message_id = self.alert_messages.pop(
-            title,
-            None,
-        )
-
-        if message_id is None:
-            return
-
-        if services.discord is None:
-            return
-
-        await services.discord.delete_health_alert(message_id)
-
-        self._save_alert_state()
-
-    def _load_alert_state(self) -> dict[str, int]:
-        if not self.HEALTH_STATE_FILE.exists():
-            return {}
-
-        try:
-            with open(
-                self.HEALTH_STATE_FILE,
-                "r",
-            ) as file:
-                data = json.load(file)
-
-            return {title: int(message_id) for title, message_id in data.items()}
-
-        except Exception as error:
-            print(f"[Health Monitor] Failed to load alert state: {error}")
-
-            return {}
-
-    def _save_alert_state(self):
-        try:
-            self.HEALTH_STATE_FILE.parent.mkdir(
-                parents=True,
-                exist_ok=True,
-            )
-
-            with open(
-                self.HEALTH_STATE_FILE,
-                "w",
-            ) as file:
-                json.dump(
-                    self.alert_messages,
-                    file,
-                    indent=4,
-                )
-
-        except Exception as error:
-            print(f"[Health Monitor] Failed to save alert state: {error}")
 
     def _track_progress(
         self,

@@ -65,6 +65,7 @@ initialize_debug_routes(
     services.sonarr,
     services.radarr,
     services.pipeline_monitor,
+    services.health_monitor,
 )
 
 
