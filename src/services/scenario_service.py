@@ -21,6 +21,7 @@ class ScenarioService:
             tmdb_id=0,
             release_date=date.today() - timedelta(days=12),
             overseerr=OverseerrRequest(
+                id=1,
                 status=2,
                 media_status=3,
                 requester="Michael",
@@ -47,6 +48,7 @@ class ScenarioService:
             tmdb_id=0,
             release_date=date.today() + timedelta(days=18),
             overseerr=OverseerrRequest(
+                id=2,
                 status=2,
                 media_status=1,
                 requester="Michael",
@@ -79,6 +81,7 @@ class ScenarioService:
                 ),
             ],
             overseerr=OverseerrRequest(
+                id=3,
                 status=2,
                 media_status=3,
                 requester="Michael",

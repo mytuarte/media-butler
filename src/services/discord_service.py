@@ -105,6 +105,17 @@ class DiscordService:
 
         logger.info(f"Discord notification sent for '{movie.title}'.")
 
+    async def send_embed(
+        self,
+        embed: discord.Embed,
+    ):
+        channel = self.client.get_channel(Config.DISCORD_CHANNEL_ID)
+
+        if channel is None:
+            raise RuntimeError("Discord channel not found.")
+
+        await channel.send(embed=embed)
+
     async def send_health_alert(
         self,
         embed: discord.Embed,
