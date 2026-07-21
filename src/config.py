@@ -40,6 +40,9 @@ class Config:
     DISCORD_TRENDING_MOVIES_CHANNEL_ID = _optional_int(
         "DISCORD_TRENDING_MOVIES_CHANNEL_ID"
     )
+    DISCORD_TRENDING_TV_CHANNEL_ID = _optional_int(
+        "DISCORD_TRENDING_TV_CHANNEL_ID"
+    )
     DELETE_SEARCH_MESSAGES = (
         os.getenv(
             "DELETE_SEARCH_MESSAGES",
@@ -67,6 +70,10 @@ class Config:
     TMDB_API_KEY = os.getenv("TMDB_API_KEY")
     TRENDING_MOVIES_INTERVAL_HOURS = _float_config_value(
         "TRENDING_MOVIES_INTERVAL_HOURS",
+        "24",
+    )
+    TRENDING_TV_INTERVAL_HOURS = _float_config_value(
+        "TRENDING_TV_INTERVAL_HOURS",
         "24",
     )
 

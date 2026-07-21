@@ -46,6 +46,19 @@ class TmdbTrendingAvailabilityTests(unittest.TestCase):
         response.json.return_value = {"results": {}}
         self.assertFalse(service.movie_has_digital_availability(2))
 
+    @patch("services.discovery.tmdb_service.requests.get")
+    def test_tv_provider_filter_accepts_digital_options_only(self, get):
+        response = Mock()
+        get.return_value = response
+        service = TmdbService()
+
+        for provider_type in ("flatrate", "rent", "buy"):
+            response.json.return_value = {"results": {"US": {provider_type: [{}]}}}
+            self.assertTrue(service.tv_has_digital_availability(1))
+
+        response.json.return_value = {"results": {"US": {"link": "no providers"}}}
+        self.assertFalse(service.tv_has_digital_availability(1))
+
 
 if __name__ == "__main__":
     unittest.main()

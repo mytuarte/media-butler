@@ -26,6 +26,7 @@ from services.search.sonarr_search_service import SonarrSearchService
 from services.search_channel_service import SearchChannelService
 from services.sonarr_service import SonarrService
 from services.trending_movies_service import TrendingMoviesService
+from services.trending_tv_service import TrendingTvService
 from services.upcoming_movie_watchlist_service import UpcomingMovieWatchlistService
 
 app = Flask(__name__)
@@ -51,6 +52,7 @@ services.search_channel = SearchChannelService()
 services.health_monitor = HealthMonitorService()
 services.upcoming_movie_watchlist = UpcomingMovieWatchlistService()
 services.trending_movies = TrendingMoviesService()
+services.trending_tv = TrendingTvService()
 
 
 initialize_webhook_routes(
