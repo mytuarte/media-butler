@@ -19,5 +19,6 @@ data/database.db
 
 #health log
 data/health_alerts.json
+data/trending_movies.json
 
 .ssh/
