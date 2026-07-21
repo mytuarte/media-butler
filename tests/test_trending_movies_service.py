@@ -81,6 +81,10 @@ class TrendingMoviesServiceTests(unittest.TestCase):
         self.run_cycle(service, movies)
 
         self.assertEqual(len(self.discord.sent), 1)
+        self.assertEqual(
+            self.discord.sent[0].title,
+            "🎬 Upcoming Movie Watchlist",
+        )
         self.assertEqual(service.state.message_id, 101)
         self.assertEqual(
             json.loads(self.state_file.read_text())["fingerprint"],
@@ -107,6 +111,10 @@ class TrendingMoviesServiceTests(unittest.TestCase):
 
         self.assertEqual(len(self.discord.sent), 1)
         self.assertEqual(self.discord.updated[0][0], 101)
+        self.assertEqual(
+            self.discord.updated[0][1].title,
+            "🎬 Upcoming Movie Watchlist",
+        )
         self.assertEqual(service.state.message_id, 101)
 
     def test_missing_dashboard_message_is_replaced(self):
