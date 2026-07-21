@@ -19,6 +19,18 @@ class UpcomingMovieWatchlistServiceTests(unittest.TestCase):
 
         self.assertEqual(embed.description, "⚪ The Odyssey [In Theaters]")
 
+    def test_announced_movie_remains_in_watchlist(self):
+        service = UpcomingMovieWatchlistService()
+        announced_movie = DiscoveryItem(
+            title="Announced Movie",
+            media_type="movie",
+            tmdb_id=3,
+        )
+
+        embed = service._embed([announced_movie])
+
+        self.assertEqual(embed.description, "⚪ Announced Movie [Announced]")
+
 
 if __name__ == "__main__":
     unittest.main()

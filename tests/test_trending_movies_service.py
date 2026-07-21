@@ -69,7 +69,6 @@ class TrendingMoviesServiceTests(unittest.TestCase):
                 tmdb_id=1,
                 release_date=(date.today() - timedelta(days=1)).isoformat(),
                 monitoring_state=status,
-                status_detail=("Released" if status == MonitoringState.NOT_ADDED else None),
             )
         ]
 
@@ -193,17 +192,17 @@ class TrendingMoviesServiceTests(unittest.TestCase):
             TrendingMoviesService._fingerprint([changed]),
         )
 
-    def test_released_movie_appears_in_dashboard(self):
+    def test_trending_movie_not_in_plex_or_requested_appears_in_dashboard(self):
         service = self.create_service()
 
         self.run_cycle(service, self.movies())
 
         self.assertEqual(self.discord.sent[0].description, "⚪ Example Movie")
 
-    def test_digitally_released_movie_appears_in_dashboard(self):
+    def test_requested_movie_not_downloaded_appears_in_dashboard(self):
         service = self.create_service()
-        digital_movie = DiscoveryItem(
-            title="Digital Movie",
+        requested_movie = DiscoveryItem(
+            title="Requested Movie",
             media_type="movie",
             tmdb_id=2,
             release_date=date.today().isoformat(),
@@ -211,16 +210,17 @@ class TrendingMoviesServiceTests(unittest.TestCase):
             status_detail="Released",
         )
 
-        self.run_cycle(service, [digital_movie])
+        self.run_cycle(service, [requested_movie])
 
-        self.assertEqual(self.discord.sent[0].description, "🟡 Digital Movie")
+        self.assertEqual(self.discord.sent[0].description, "🟡 Requested Movie")
 
-    def test_plex_owned_movie_appears_without_a_release_date(self):
+    def test_plex_owned_movie_appears_in_dashboard(self):
         service = self.create_service()
         plex_movie = DiscoveryItem(
             title="Plex Movie",
             media_type="movie",
             tmdb_id=2,
+            release_date=(date.today() - timedelta(days=1)).isoformat(),
             monitoring_state=MonitoringState.AVAILABLE,
         )
 
@@ -253,7 +253,20 @@ class TrendingMoviesServiceTests(unittest.TestCase):
 
         self.assertEqual(self.discord.sent[0].description, "⚪ Example Movie")
 
-    def test_in_theaters_only_movie_is_excluded_from_dashboard(self):
+    def test_movie_with_invalid_release_date_is_excluded_from_dashboard(self):
+        service = self.create_service()
+        invalid_release_date_movie = DiscoveryItem(
+            title="Unknown Release",
+            media_type="movie",
+            tmdb_id=2,
+            release_date="not-a-date",
+        )
+
+        self.run_cycle(service, self.movies() + [invalid_release_date_movie])
+
+        self.assertEqual(self.discord.sent[0].description, "⚪ Example Movie")
+
+    def test_in_theaters_movie_appears_in_dashboard(self):
         service = self.create_service()
         theatrical_movie = DiscoveryItem(
             title="The Odyssey",
@@ -264,7 +277,10 @@ class TrendingMoviesServiceTests(unittest.TestCase):
 
         self.run_cycle(service, self.movies() + [theatrical_movie])
 
-        self.assertEqual(self.discord.sent[0].description, "⚪ Example Movie")
+        self.assertEqual(
+            self.discord.sent[0].description,
+            "⚪ Example Movie\n⚪ The Odyssey",
+        )
 
     def test_upcoming_movie_does_not_change_dashboard_fingerprint(self):
         service = self.create_service()

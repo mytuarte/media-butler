@@ -1,12 +1,11 @@
 import asyncio
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from config import Config
 from models.discovery.discovery_item import DiscoveryItem
-from models.monitoring_state import MonitoringState
 from models.trending_movies_state import TrendingMoviesState
 from services.discovery.discovery_service import DiscoveryService
 from services.log_service import logger
@@ -59,7 +58,7 @@ class TrendingMoviesService:
             return
 
         movies = await asyncio.to_thread(self.discovery.get_trending_movies)
-        movies = self._watchable_movies(movies)
+        movies = self._currently_trending_movies(movies)
         fingerprint = self._fingerprint(movies)
 
         if self.state is not None:
@@ -118,19 +117,30 @@ class TrendingMoviesService:
         return hashlib.sha256(serialized.encode()).hexdigest()
 
     @staticmethod
-    def _watchable_movies(movies: list[DiscoveryItem]) -> list[DiscoveryItem]:
-        """Keep only Plex-owned or digitally released movies.
+    def _currently_trending_movies(movies: list[DiscoveryItem]) -> list[DiscoveryItem]:
+        """Keep released movies from TMDB's popularity-ranked source list.
 
-        A past TMDB theatrical release date does not establish digital
-        availability. Radarr's ``Released`` status is the confirmed digital
-        signal for movies that are not already available in Plex.
+        Radarr, Plex, and request data describe Media Butler's relationship to
+        a movie and are intentionally retained only for the dashboard status
+        indicator.  A missing or future TMDB release date instead identifies
+        announced or unreleased titles that do not belong in this view.
         """
+        today = datetime.now(timezone.utc).date()
         return [
             movie
             for movie in movies
-            if movie.monitoring_state == MonitoringState.AVAILABLE
-            or movie.status_detail == "Released"
+            if TrendingMoviesService._is_released_on_or_before(movie, today)
         ]
+
+    @staticmethod
+    def _is_released_on_or_before(movie: DiscoveryItem, today: date) -> bool:
+        if movie.release_date is None:
+            return False
+
+        try:
+            return date.fromisoformat(movie.release_date) <= today
+        except ValueError:
+            return False
 
     def _load_state(self) -> TrendingMoviesState | None:
         if not self.STATE_FILE.exists():
