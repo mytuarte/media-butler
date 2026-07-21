@@ -46,31 +46,20 @@ class PipelineMonitorService:
         now = datetime.now()
 
         for request in requests:
+            # Only process movie requests
+            if request.get("type") != "movie":
+                continue
+
             media = request.get(
                 "media",
                 {},
             )
 
-            tmdb_id = media.get("tmdbId")
+            tmdb_id = media.get(
+                "tmdbId",
+            )
 
             if tmdb_id is None:
-                continue
-
-            movie = movies_by_tmdb.get(tmdb_id)
-
-            if movie is None:
-                continue
-
-            if movie.get("hasFile"):
-                continue
-
-            if not movie.get("monitored"):
-                continue
-
-            if movie.get("status") != "released":
-                continue
-
-            if not movie.get("isAvailable"):
                 continue
 
             requested_date = self._get_request_date(
@@ -85,10 +74,55 @@ class PipelineMonitorService:
             if waiting_time < timedelta(hours=self.REQUEST_THRESHOLD_HOURS):
                 continue
 
-            title = movie.get(
-                "title",
-                "Unknown Movie",
+            title = self._get_request_title(
+                request,
             )
+
+            movie = movies_by_tmdb.get(
+                tmdb_id,
+            )
+
+            if movie is None:
+                if self._is_released_request(
+                    request,
+                ):
+                    issues.append(
+                        HealthIssue(
+                            title=f"Pipeline Stalled: {title}",
+                            issue_type="pipeline",
+                            details=(
+                                "Movie appears stuck before entering Radarr.\n\n"
+                                f"Movie: {title}\n"
+                                f"TMDb ID: {tmdb_id}\n\n"
+                                f"Requested: {requested_date:%Y-%m-%d %H:%M}\n"
+                                f"Waiting: {self._format_duration(waiting_time)}\n\n"
+                                "Status:\n"
+                                "- Overseerr Request: Yes\n"
+                                "- Radarr Entry: Missing\n"
+                                "- File Exists: No\n\n"
+                                "Possible causes:\n"
+                                "- Radarr sync failed\n"
+                                "- Movie was removed from Radarr\n"
+                                "- Request was never added"
+                            ),
+                            created_at=now,
+                            severity="warning",
+                        )
+                    )
+
+                continue
+
+            if movie.get("hasFile"):
+                continue
+
+            if not movie.get("monitored"):
+                continue
+
+            if movie.get("status") != "released":
+                continue
+
+            if not movie.get("isAvailable"):
+                continue
 
             if self._is_in_queue(
                 title,
@@ -106,7 +140,8 @@ class PipelineMonitorService:
                     issue_type="pipeline",
                     details=(
                         "Movie appears stuck in acquisition pipeline.\n\n"
-                        f"Movie: {title}\n\n"
+                        f"Movie: {title}\n"
+                        f"TMDb ID: {tmdb_id}\n\n"
                         f"Requested: {requested_date:%Y-%m-%d %H:%M}\n"
                         f"Waiting: {self._format_duration(waiting_time)}\n\n"
                         "Status:\n"
@@ -127,6 +162,38 @@ class PipelineMonitorService:
             )
 
         return issues
+
+    def _get_request_title(
+        self,
+        request: dict,
+    ) -> str:
+        media = request.get(
+            "media",
+            {},
+        )
+
+        return (
+            media.get("title")
+            or request.get("title")
+            or request.get("name")
+            or "Unknown Movie"
+        )
+
+    def _is_released_request(
+        self,
+        request: dict,
+    ) -> bool:
+        media = request.get(
+            "media",
+            {},
+        )
+
+        return (
+            media.get(
+                "status",
+            )
+            == 5
+        )
 
     def _build_history_details(
         self,
@@ -159,33 +226,13 @@ class PipelineMonitorService:
             {},
         )
 
-        release_group = data.get(
-            "releaseGroup",
-            "Unknown",
-        )
-
-        client = data.get(
-            "downloadClientName",
-            "Unknown",
-        )
-
-        message = latest.get(
-            "message",
-            "",
-        )
-
-        details = (
+        return (
             "Radarr History:\n"
             f"Last Event: {event}\n"
             f"Date: {date}\n"
-            f"Release Group: {release_group}\n"
-            f"Download Client: {client}"
+            f"Release Group: {data.get('releaseGroup', 'Unknown')}\n"
+            f"Download Client: {data.get('downloadClientName', 'Unknown')}"
         )
-
-        if message:
-            details += f"\nDetails: {message}"
-
-        return details
 
     def _get_request_date(
         self,
@@ -214,7 +261,7 @@ class PipelineMonitorService:
         hours = int(duration.total_seconds() // 3600)
 
         days = hours // 24
-        hours = hours % 24
+        hours %= 24
 
         if days:
             return f"{days} days, {hours} hours"

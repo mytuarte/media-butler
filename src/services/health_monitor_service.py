@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from models.health_issue import HealthIssue
+from services.pipeline_monitor_service import PipelineMonitorService
 from services.registry import services
 from services.sabnzbd_client import SabnzbdClient
 from views.health_alert_view import HealthAlertView
@@ -15,6 +16,7 @@ class HealthMonitorService:
 
     def __init__(self):
         self.sabnzbd = SabnzbdClient()
+        self.pipeline = PipelineMonitorService()
 
         self.active_issues: dict[str, HealthIssue] = {}
 
@@ -44,7 +46,9 @@ class HealthMonitorService:
             try:
                 issues = self.check()
 
-                await self._process_issues(issues)
+                await self._process_issues(
+                    issues,
+                )
 
             except Exception as error:
                 print(f"[Health Monitor] Error: {error}")
@@ -52,29 +56,19 @@ class HealthMonitorService:
             await asyncio.sleep(60)
 
     def check(self) -> list[HealthIssue]:
-        """
-        Runs all health checks.
-        Returns current active issues.
-        """
-
         issues: list[HealthIssue] = []
 
         issues.extend(self._check_downloads())
 
-        if services.pipeline_monitor:
-            try:
-                issues.extend(services.pipeline_monitor.check_movies())
+        try:
+            issues.extend(self.pipeline.check_movies())
 
-            except Exception as error:
-                print(f"[Health Monitor] Pipeline check failed: {error}")
+        except Exception as error:
+            print(f"[Health Monitor] Pipeline check failed: {error}")
 
         return issues
 
     def _check_downloads(self) -> list[HealthIssue]:
-        """
-        Check SABnzbd downloads for problems.
-        """
-
         issues: list[HealthIssue] = []
 
         try:
@@ -155,7 +149,7 @@ class HealthMonitorService:
                         title=name,
                         issue_type="stalled_download",
                         details=(
-                            f"No progress detected for "
+                            "No progress detected for "
                             f"{self.STALL_THRESHOLD_MINUTES} minutes.\n"
                             f"Progress: {progress}%"
                         ),
