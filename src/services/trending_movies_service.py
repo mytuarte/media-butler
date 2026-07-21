@@ -15,6 +15,7 @@ from views.media_list_view import MediaListView
 
 class TrendingMoviesService:
     STATE_FILE = Path("data/trending_movies.json")
+    DASHBOARD_TITLE = "🎬 Upcoming Movie Watchlist"
 
     def __init__(self):
         self.discovery = DiscoveryService()
@@ -69,7 +70,7 @@ class TrendingMoviesService:
 
             if not message_exists:
                 embed = MediaListView.build(
-                    "🔥 Trending Movies This Week",
+                    self.DASHBOARD_TITLE,
                     movies,
                 )
                 message = await services.discord.send_trending_movies(embed)
@@ -80,7 +81,7 @@ class TrendingMoviesService:
                 return
 
         embed = MediaListView.build(
-            "🔥 Trending Movies This Week",
+            self.DASHBOARD_TITLE,
             movies,
         )
 
