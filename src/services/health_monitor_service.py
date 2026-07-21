@@ -7,8 +7,11 @@ from pathlib import Path
 from config import Config
 from models.health_issue import HealthIssue
 from services.pipeline_monitor_service import PipelineMonitorService
+from services.plex_service import PlexService
+from services.radarr_service import RadarrService
 from services.registry import services
 from services.sabnzbd_client import SabnzbdClient
+from services.sonarr_service import SonarrService
 from utils.formatting import format_size
 
 
@@ -19,11 +22,18 @@ class HealthMonitorService:
     DOWNLOADS_MONITOR_SOURCE = "downloads"
     PIPELINE_MONITOR_SOURCE = "pipeline"
     STORAGE_MONITOR_SOURCE = "storage"
+    RADARR_MONITOR_SOURCE = "radarr"
+    SONARR_MONITOR_SOURCE = "sonarr"
+    SABNZBD_MONITOR_SOURCE = "sabnzbd"
+    PLEX_MONITOR_SOURCE = "plex"
 
     HEALTH_STATE_FILE = Path("data/health_alerts.json")
 
     def __init__(self):
         self.sabnzbd = SabnzbdClient()
+        self.radarr = RadarrService()
+        self.sonarr = SonarrService()
+        self.plex = PlexService()
         self.pipeline = PipelineMonitorService()
 
         self.forced_issues: list[HealthIssue] = []
@@ -88,6 +98,22 @@ class HealthMonitorService:
                 self.STORAGE_MONITOR_SOURCE,
             )
 
+        for service_name, monitor_source, check in (
+            ("Radarr", self.RADARR_MONITOR_SOURCE, self.radarr.test_connection),
+            ("Sonarr", self.SONARR_MONITOR_SOURCE, self.sonarr.test_connection),
+            ("SABnzbd", self.SABNZBD_MONITOR_SOURCE, self.sabnzbd.test_connection),
+            ("Plex", self.PLEX_MONITOR_SOURCE, self.plex.test_connection),
+        ):
+            service_issues, service_checked = self._check_service_availability(
+                service_name,
+                monitor_source,
+                check,
+            )
+            issues.extend(service_issues)
+
+            if service_checked:
+                self.successful_monitor_sources.add(monitor_source)
+
         try:
             issues.extend(self.pipeline.check_movies())
             self.successful_monitor_sources.add(
@@ -109,6 +135,33 @@ class HealthMonitorService:
 
     def clear_test_issues(self):
         self.forced_issues = []
+
+    def _check_service_availability(
+        self,
+        service_name: str,
+        monitor_source: str,
+        check,
+    ) -> tuple[list[HealthIssue], bool]:
+        try:
+            check()
+        except Exception as error:
+            print(f"[Health Monitor] {service_name} check failed: {error}")
+
+            return [
+                HealthIssue(
+                    title=f"{service_name} Offline",
+                    issue_type="service",
+                    details=(
+                        f"Unable to connect to {service_name}.\n"
+                        f"Error: {error}"
+                    ),
+                    created_at=datetime.now(),
+                    severity="critical",
+                    monitor_source=monitor_source,
+                )
+            ], False
+
+        return [], True
 
     async def _process_issues(
         self,
@@ -243,6 +296,9 @@ class HealthMonitorService:
         self,
         issue: HealthIssue,
     ) -> str:
+        if issue.monitor_source is not None:
+            return issue.monitor_source
+
         if issue.issue_type == "pipeline":
             return self.PIPELINE_MONITOR_SOURCE
 

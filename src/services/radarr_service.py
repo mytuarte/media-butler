@@ -58,6 +58,19 @@ class RadarrService:
 
         return response.json()
 
+    def test_connection(self):
+        headers = {
+            "X-Api-Key": Config.RADARR_API_KEY,
+        }
+
+        response = requests.get(
+            f"{Config.RADARR_URL}/api/v3/system/status",
+            headers=headers,
+            timeout=10,
+        )
+
+        response.raise_for_status()
+
     def get_history(self):
         headers = {
             "X-Api-Key": Config.RADARR_API_KEY,

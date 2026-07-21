@@ -11,6 +11,7 @@ class HealthIssue:
     created_at: datetime
 
     severity: str = "warning"
+    monitor_source: str | None = None
 
     @property
     def alert_key(self) -> str:

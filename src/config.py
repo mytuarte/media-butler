@@ -66,6 +66,10 @@ class Config:
     SABNZBD_URL = os.getenv("SABNZBD_URL")
     SABNZBD_API_KEY = os.getenv("SABNZBD_API_KEY")
 
+    # Plex
+    PLEX_URL = os.getenv("PLEX_URL")
+    PLEX_TOKEN = os.getenv("PLEX_TOKEN")
+
     # Filesystem
     MEDIA_ROOT = os.getenv("MEDIA_ROOT")
     STORAGE_WARNING_THRESHOLD_PERCENT = int(

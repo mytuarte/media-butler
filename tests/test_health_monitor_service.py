@@ -261,6 +261,71 @@ class HealthMonitorServiceTests(unittest.TestCase):
         self.assertTrue(checked)
         self.assertEqual(issues, [])
 
+    def test_service_availability_failure_creates_critical_issue(self):
+        monitor = self.create_monitor()
+
+        issues, checked = monitor._check_service_availability(
+            "Plex",
+            monitor.PLEX_MONITOR_SOURCE,
+            lambda: (_ for _ in ()).throw(ConnectionError("Unauthorized")),
+        )
+
+        self.assertFalse(checked)
+        self.assertEqual(len(issues), 1)
+        self.assertEqual(issues[0].title, "Plex Offline")
+        self.assertEqual(issues[0].issue_type, "service")
+        self.assertEqual(issues[0].severity, "critical")
+        self.assertEqual(issues[0].monitor_source, monitor.PLEX_MONITOR_SOURCE)
+
+    def test_successful_service_check_marks_only_its_source_healthy(self):
+        monitor = self.create_monitor()
+
+        with patch.object(monitor, "_check_downloads", return_value=([], False)), patch.object(
+            monitor,
+            "_check_storage",
+            return_value=([], False),
+        ), patch.object(monitor.pipeline, "check_movies", return_value=[]), patch.object(
+            monitor.radarr,
+            "test_connection",
+        ), patch.object(monitor.sonarr, "test_connection"), patch.object(
+            monitor.sabnzbd,
+            "test_connection",
+        ), patch.object(monitor.plex, "test_connection"):
+            issues = monitor.check()
+
+        self.assertEqual(issues, [])
+        self.assertSetEqual(
+            monitor.successful_monitor_sources,
+            {
+                monitor.PIPELINE_MONITOR_SOURCE,
+                monitor.RADARR_MONITOR_SOURCE,
+                monitor.SONARR_MONITOR_SOURCE,
+                monitor.SABNZBD_MONITOR_SOURCE,
+                monitor.PLEX_MONITOR_SOURCE,
+            },
+        )
+
+    def test_service_alert_resolves_only_after_successful_checks(self):
+        monitor = self.create_monitor()
+        issue = HealthIssue(
+            title="Plex Offline",
+            issue_type="service",
+            details="Unable to connect to Plex.\nError: Unauthorized",
+            created_at=datetime(2026, 7, 21, 12, 0),
+            severity="critical",
+            monitor_source=monitor.PLEX_MONITOR_SOURCE,
+        )
+
+        self.process(monitor, [issue], set())
+        self.process(monitor, [], set())
+        self.assertEqual(self.discord.deleted, [])
+
+        self.process(monitor, [], {monitor.PLEX_MONITOR_SOURCE})
+        self.assertEqual(self.discord.deleted, [])
+
+        self.process(monitor, [], {monitor.PLEX_MONITOR_SOURCE})
+        self.assertEqual(self.discord.deleted, [101])
+
 
 if __name__ == "__main__":
     unittest.main()

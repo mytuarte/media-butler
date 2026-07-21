@@ -56,6 +56,19 @@ class SonarrService:
 
         return response.json()
 
+    def test_connection(self):
+        headers = {
+            "X-Api-Key": Config.SONARR_API_KEY,
+        }
+
+        response = requests.get(
+            f"{Config.SONARR_URL}/api/v3/system/status",
+            headers=headers,
+            timeout=10,
+        )
+
+        response.raise_for_status()
+
     def get_episodes(
         self,
         series_id: int,
