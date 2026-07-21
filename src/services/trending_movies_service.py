@@ -1,7 +1,7 @@
 import asyncio
 import hashlib
 import json
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 from config import Config
@@ -119,29 +119,18 @@ class TrendingMoviesService:
 
     @staticmethod
     def _watchable_movies(movies: list[DiscoveryItem]) -> list[DiscoveryItem]:
-        """Exclude movies that are announced, unreleased, or only in theaters."""
-        watchable_movies = []
+        """Keep only Plex-owned or digitally released movies.
 
-        for movie in movies:
-            if movie.monitoring_state == MonitoringState.AVAILABLE:
-                watchable_movies.append(movie)
-                continue
-
-            if movie.status_detail in {"Announced", "In Theaters"}:
-                continue
-
-            if movie.release_date is None:
-                continue
-
-            try:
-                release_date = date.fromisoformat(movie.release_date)
-            except ValueError:
-                continue
-
-            if release_date <= date.today():
-                watchable_movies.append(movie)
-
-        return watchable_movies
+        A past TMDB theatrical release date does not establish digital
+        availability. Radarr's ``Released`` status is the confirmed digital
+        signal for movies that are not already available in Plex.
+        """
+        return [
+            movie
+            for movie in movies
+            if movie.monitoring_state == MonitoringState.AVAILABLE
+            or movie.status_detail == "Released"
+        ]
 
     def _load_state(self) -> TrendingMoviesState | None:
         if not self.STATE_FILE.exists():
