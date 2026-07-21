@@ -16,6 +16,7 @@ class ServiceRegistry:
 
         self.health_monitor = None
         self.trending_movies = None
+        self.upcoming_movie_watchlist = None
 
 
 services = ServiceRegistry()

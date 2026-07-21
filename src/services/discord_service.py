@@ -41,6 +41,10 @@ class DiscordService:
                 if services.trending_movies.start():
                     logger.info("Trending movies scheduler started.")
 
+            if services.upcoming_movie_watchlist:
+                if services.upcoming_movie_watchlist.start():
+                    logger.info("Upcoming movie watchlist scheduler started.")
+
         @self.client.event
         async def on_message(message):
             # Ignore messages from bots (including ourselves)
@@ -145,6 +149,9 @@ class DiscordService:
 
         return await channel.send(embed=embed)
 
+    async def send_upcoming_movies(self, embed: discord.Embed) -> discord.Message:
+        return await self._get_trending_movies_channel().send(embed=embed)
+
     async def trending_movies_message_exists(
         self,
         message_id: int,
@@ -167,6 +174,9 @@ class DiscordService:
             )
 
             return None
+
+    async def upcoming_movies_message_exists(self, message_id: int) -> bool | None:
+        return await self.trending_movies_message_exists(message_id)
 
     async def update_trending_movies(
         self,
@@ -192,6 +202,13 @@ class DiscordService:
             )
 
             return None
+
+    async def update_upcoming_movies(
+        self,
+        message_id: int,
+        embed: discord.Embed,
+    ) -> bool | None:
+        return await self.update_trending_movies(message_id, embed)
 
     def _get_trending_movies_channel(self):
         channel_id = Config.DISCORD_TRENDING_MOVIES_CHANNEL_ID
