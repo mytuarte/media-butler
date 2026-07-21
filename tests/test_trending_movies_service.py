@@ -4,8 +4,9 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
-from config import Config
+from config import Config, _float_config_value
 from models.discovery.discovery_item import DiscoveryItem
 from models.monitoring_state import MonitoringState
 from models.trending_movies_state import TrendingMoviesState
@@ -151,6 +152,27 @@ class TrendingMoviesServiceTests(unittest.TestCase):
     def test_start_is_disabled_without_a_trending_movies_channel(self):
         service = self.create_service()
         Config.DISCORD_TRENDING_MOVIES_CHANNEL_ID = None
+
+        service.start()
+
+        self.assertFalse(service.running)
+        self.assertIsNone(service._task)
+
+    def test_decimal_interval_config_value_is_supported(self):
+        with patch.dict(
+            "os.environ",
+            {"TRENDING_MOVIES_INTERVAL_HOURS": "0.05"},
+        ):
+            interval = _float_config_value(
+                "TRENDING_MOVIES_INTERVAL_HOURS",
+                "24",
+            )
+
+        self.assertEqual(interval, 0.05)
+
+    def test_start_is_disabled_with_a_non_positive_interval(self):
+        service = self.create_service()
+        Config.TRENDING_MOVIES_INTERVAL_HOURS = 0
 
         service.start()
 

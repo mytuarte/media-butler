@@ -18,6 +18,13 @@ def _optional_int(name: str) -> int | None:
     return int(value) if value else None
 
 
+def _float_config_value(
+    name: str,
+    default: str,
+) -> float:
+    return float(os.getenv(name, default))
+
+
 class Config:
     ENVIRONMENT = environment
 
@@ -58,11 +65,9 @@ class Config:
 
     # TMDb
     TMDB_API_KEY = os.getenv("TMDB_API_KEY")
-    TRENDING_MOVIES_INTERVAL_HOURS = int(
-        os.getenv(
-            "TRENDING_MOVIES_INTERVAL_HOURS",
-            "24",
-        )
+    TRENDING_MOVIES_INTERVAL_HOURS = _float_config_value(
+        "TRENDING_MOVIES_INTERVAL_HOURS",
+        "24",
     )
 
     # Radarr
