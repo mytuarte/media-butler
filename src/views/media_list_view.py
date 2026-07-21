@@ -1,3 +1,5 @@
+from datetime import date
+
 import discord
 
 from models.discovery.discovery_item import DiscoveryItem
@@ -5,6 +7,8 @@ from models.monitoring_state import MonitoringState
 
 
 class MediaListView:
+    FOOTER_LEGEND = "🟢 Available · 🟡 Requested · ⚪ Not Requested"
+
     @staticmethod
     def build(
         title: str,
@@ -17,7 +21,7 @@ class MediaListView:
 
         if not media:
             embed.description = "No media found."
-            embed.set_footer(text="🟢 Available • 🟡 Monitored • ⚪ Not Added")
+            embed.set_footer(text=MediaListView.FOOTER_LEGEND)
             return embed
 
         media = sorted(
@@ -32,14 +36,16 @@ class MediaListView:
 
             line = f"{icon} {item.title}"
 
-            if item.status_detail:
-                line += f" ({item.status_detail})"
+            release_status = MediaListView._release_status(item)
+
+            if release_status:
+                line += f" [{release_status}]"
 
             lines.append(line)
 
         embed.description = "\n".join(lines)
 
-        embed.set_footer(text="🟢 Available • 🟡 Monitored • ⚪ Not Added")
+        embed.set_footer(text=MediaListView.FOOTER_LEGEND)
 
         return embed
 
@@ -59,6 +65,27 @@ class MediaListView:
 
             case _:
                 return "⚪"
+
+    @staticmethod
+    def _release_status(
+        item: DiscoveryItem,
+    ) -> str | None:
+        if item.monitoring_state == MonitoringState.AVAILABLE:
+            return None
+
+        if item.status_detail:
+            return item.status_detail
+
+        if item.release_date:
+            try:
+                release_date = date.fromisoformat(item.release_date)
+            except ValueError:
+                return "Announced"
+
+            if release_date <= date.today():
+                return "In Theaters"
+
+        return "Announced"
 
     @staticmethod
     def _sort_key(
