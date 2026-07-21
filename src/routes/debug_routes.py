@@ -122,6 +122,40 @@ def initialize(
             }
         )
 
+    @debug_routes.get("/debug/test-pipeline-alert")
+    def test_pipeline_alert():
+        issue = HealthIssue(
+            title="Pipeline: Test Movie",
+            issue_type="pipeline",
+            details=(
+                "Movie appears stuck in acquisition pipeline.\n\n"
+                "Movie: Test Movie\n"
+                "Requested: Yes\n"
+                "Released: Yes\n"
+                "Digital Available: Yes\n"
+                "Radarr Monitored: Yes\n"
+                "File Exists: No\n"
+                "Download Queue: Not Found\n\n"
+                "Possible causes:\n"
+                "- Radarr has not found a release\n"
+                "- Indexers returned no results\n"
+                "- Download failed before entering queue"
+            ),
+            created_at=datetime.now(),
+            severity="warning",
+        )
+
+        embed = HealthAlertView.build(issue)
+
+        future = asyncio.run_coroutine_threadsafe(
+            discord_service.send_health_alert(embed),
+            discord_service.client.loop,
+        )
+
+        future.result(timeout=10)
+
+        return "Pipeline alert test sent."
+
     @debug_routes.get("/debug/test")
     def test():
         future = asyncio.run_coroutine_threadsafe(

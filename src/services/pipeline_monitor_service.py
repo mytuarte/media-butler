@@ -61,22 +61,18 @@ class PipelineMonitorService:
             if movie is None:
                 continue
 
-            # Already downloaded
             if movie.get("hasFile"):
                 continue
 
-            # Not being monitored by Radarr
             if not movie.get("monitored"):
                 continue
 
-            # Not released / not digitally available
             if movie.get("status") != "released":
                 continue
 
             if not movie.get("isAvailable"):
                 continue
 
-            # Give Radarr time to find a release
             if not self._is_old_request(
                 request,
                 now,
@@ -88,7 +84,6 @@ class PipelineMonitorService:
                 "Unknown Movie",
             )
 
-            # Already downloading
             if self._is_in_queue(
                 title,
                 queue_titles,
@@ -100,12 +95,18 @@ class PipelineMonitorService:
                     title=f"Pipeline: {title}",
                     issue_type="pipeline",
                     details=(
-                        f"Requested media has not entered download pipeline.\n\n"
+                        "Movie appears stuck in acquisition pipeline.\n\n"
                         f"Movie: {title}\n"
-                        f"Released: Yes\n"
-                        f"Digitally Available: Yes\n"
-                        f"Radarr Monitored: Yes\n"
-                        f"File Exists: No"
+                        "Requested: Yes\n"
+                        "Released: Yes\n"
+                        "Digital Available: Yes\n"
+                        "Radarr Monitored: Yes\n"
+                        "File Exists: No\n"
+                        "Download Queue: Not Found\n\n"
+                        "Possible causes:\n"
+                        "- Radarr has not found a release\n"
+                        "- Indexers returned no results\n"
+                        "- Download failed before entering queue"
                     ),
                     created_at=now,
                     severity="warning",
@@ -129,7 +130,9 @@ class PipelineMonitorService:
                 "Z",
                 "+00:00",
             )
-        ).replace(tzinfo=None)
+        ).replace(
+            tzinfo=None,
+        )
 
         return now - created >= timedelta(hours=self.REQUEST_THRESHOLD_HOURS)
 
