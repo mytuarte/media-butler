@@ -53,7 +53,12 @@ def initialize(
                 }
             )
 
-        print(json.dumps(files[0], indent=4))
+        print(
+            json.dumps(
+                files[0],
+                indent=4,
+            )
+        )
 
         return jsonify(
             {
@@ -69,17 +74,6 @@ def initialize(
         return jsonify(
             {
                 "message": "Movie printed to console.",
-            }
-        )
-
-    @debug_routes.get("/debug/radarr/pipeline/<int:movie_id>")
-    def debug_radarr_pipeline(movie_id):
-        history = radarr_service.get_recent_history(movie_id)
-
-        return jsonify(
-            {
-                "movie_id": movie_id,
-                "history": history,
             }
         )
 
@@ -136,17 +130,22 @@ def initialize(
     @debug_routes.get("/debug/test-pipeline-alert")
     def test_pipeline_alert():
         issue = HealthIssue(
-            title="Pipeline: Test Movie",
+            title="Pipeline Stalled: Test Movie",
             issue_type="pipeline",
             details=(
                 "Movie appears stuck in acquisition pipeline.\n\n"
                 "Movie: Test Movie\n"
-                "Requested: Yes\n"
-                "Released: Yes\n"
-                "Digital Available: Yes\n"
-                "Radarr Monitored: Yes\n"
-                "File Exists: No\n"
-                "Download Queue: Not Found\n\n"
+                "TMDb ID: 999999\n\n"
+                "Requested: 2026-07-01 12:00\n"
+                "Waiting: 20 days\n\n"
+                "Status:\n"
+                "- Released: Yes\n"
+                "- Digital Available: Yes\n"
+                "- Radarr Monitored: Yes\n"
+                "- File Exists: No\n"
+                "- Download Queue: Not Found\n\n"
+                "Radarr History:\n"
+                "No recent activity found.\n\n"
                 "Possible causes:\n"
                 "- Radarr has not found a release\n"
                 "- Indexers returned no results\n"
