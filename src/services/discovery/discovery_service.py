@@ -1,3 +1,5 @@
+from datetime import date
+
 from models.discovery.discovery_item import DiscoveryItem
 from models.monitoring_state import MonitoringState
 from services.discovery.tmdb_service import TmdbService
@@ -8,6 +10,7 @@ from services.sonarr_service import SonarrService
 
 class DiscoveryService:
     TRENDING_MOVIE_CANDIDATE_PAGES = 5
+    TRENDING_TV_CANDIDATE_PAGES = 5
 
     def __init__(self):
         self.tmdb = TmdbService()
@@ -46,6 +49,28 @@ class DiscoveryService:
         self._enrich(items)
 
         return items
+
+    def get_watchable_trending_tv(self) -> tuple[list[DiscoveryItem], int]:
+        """Get digitally available, already-airing TV shows in popularity order."""
+        candidates = self.tmdb.get_trending_tv(pages=self.TRENDING_TV_CANDIDATE_PAGES)
+        watchable = [
+            show
+            for show in candidates
+            if self._has_already_aired(show)
+            and self.tmdb.tv_has_digital_availability(show.tmdb_id)
+        ]
+        self._enrich(watchable)
+        return watchable, len(candidates)
+
+    @staticmethod
+    def _has_already_aired(show: DiscoveryItem) -> bool:
+        if not show.release_date:
+            return False
+
+        try:
+            return date.fromisoformat(show.release_date) <= date.today()
+        except ValueError:
+            return False
 
     def get_digital_movies(self) -> list[DiscoveryItem]:
         items = self.tmdb.get_digital_movies()

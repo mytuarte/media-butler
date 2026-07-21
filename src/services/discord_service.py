@@ -41,6 +41,10 @@ class DiscordService:
                 if services.trending_movies.start():
                     logger.info("Trending movies scheduler started.")
 
+            if services.trending_tv:
+                if services.trending_tv.start():
+                    logger.info("Trending TV scheduler started.")
+
             if services.upcoming_movie_watchlist:
                 if services.upcoming_movie_watchlist.start():
                     logger.info("Upcoming movie watchlist scheduler started.")
@@ -152,6 +156,9 @@ class DiscordService:
     async def send_upcoming_movies(self, embed: discord.Embed) -> discord.Message:
         return await self._get_trending_movies_channel().send(embed=embed)
 
+    async def send_trending_tv(self, embed: discord.Embed) -> discord.Message:
+        return await self._get_trending_tv_channel().send(embed=embed)
+
     async def trending_movies_message_exists(
         self,
         message_id: int,
@@ -177,6 +184,9 @@ class DiscordService:
 
     async def upcoming_movies_message_exists(self, message_id: int) -> bool | None:
         return await self.trending_movies_message_exists(message_id)
+
+    async def trending_tv_message_exists(self, message_id: int) -> bool | None:
+        return await self._message_exists(self._get_trending_tv_channel(), message_id)
 
     async def update_trending_movies(
         self,
@@ -210,6 +220,23 @@ class DiscordService:
     ) -> bool | None:
         return await self.update_trending_movies(message_id, embed)
 
+    async def update_trending_tv(
+        self,
+        message_id: int,
+        embed: discord.Embed,
+    ) -> bool | None:
+        channel = self._get_trending_tv_channel()
+
+        try:
+            message = await channel.fetch_message(message_id)
+            await message.edit(embed=embed)
+            return True
+        except discord.NotFound:
+            return False
+        except discord.HTTPException as error:
+            logger.warning("Unable to update trending TV message %s: %s", message_id, error)
+            return None
+
     def _get_trending_movies_channel(self):
         channel_id = Config.DISCORD_TRENDING_MOVIES_CHANNEL_ID
 
@@ -222,6 +249,30 @@ class DiscordService:
             raise RuntimeError("Trending movies channel not found.")
 
         return channel
+
+    def _get_trending_tv_channel(self):
+        channel_id = Config.DISCORD_TRENDING_TV_CHANNEL_ID
+
+        if channel_id is None:
+            raise RuntimeError("Trending TV channel is not configured.")
+
+        channel = self.client.get_channel(channel_id)
+
+        if channel is None:
+            raise RuntimeError("Trending TV channel not found.")
+
+        return channel
+
+    @staticmethod
+    async def _message_exists(channel, message_id: int) -> bool | None:
+        try:
+            await channel.fetch_message(message_id)
+            return True
+        except discord.NotFound:
+            return False
+        except discord.HTTPException as error:
+            logger.warning("Unable to fetch dashboard message %s: %s", message_id, error)
+            return None
 
     async def update_health_alert(
         self,
