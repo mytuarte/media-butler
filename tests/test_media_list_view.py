@@ -52,6 +52,16 @@ class MediaListViewTests(unittest.TestCase):
 
         self.assertEqual(embed.description, "🟡 Movie Title [In Theaters]")
 
+    def test_upcoming_watchlist_view_keeps_in_theaters_movies(self):
+        movie = self.build_movie(
+            MonitoringState.COMING_SOON,
+            status_detail="In Theaters",
+        )
+
+        embed = MediaListView.build("🎬 Upcoming Movie Watchlist", [movie])
+
+        self.assertEqual(embed.description, "🟡 Movie Title [In Theaters]")
+
     def test_not_requested_announced_movie_shows_release_status(self):
         movie = self.build_movie(
             MonitoringState.NOT_ADDED,

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from config import Config
 from models.discovery.discovery_item import DiscoveryItem
+from models.monitoring_state import MonitoringState
 from models.trending_movies_state import TrendingMoviesState
 from services.discovery.discovery_service import DiscoveryService
 from services.log_service import logger
@@ -58,7 +59,7 @@ class TrendingMoviesService:
             return
 
         movies = await asyncio.to_thread(self.discovery.get_trending_movies)
-        movies = self._released_movies(movies)
+        movies = self._watchable_movies(movies)
         fingerprint = self._fingerprint(movies)
 
         if self.state is not None:
@@ -117,11 +118,18 @@ class TrendingMoviesService:
         return hashlib.sha256(serialized.encode()).hexdigest()
 
     @staticmethod
-    def _released_movies(movies: list[DiscoveryItem]) -> list[DiscoveryItem]:
-        """Exclude announced and future movies from the right-now dashboard."""
-        released_movies = []
+    def _watchable_movies(movies: list[DiscoveryItem]) -> list[DiscoveryItem]:
+        """Exclude movies that are announced, unreleased, or only in theaters."""
+        watchable_movies = []
 
         for movie in movies:
+            if movie.monitoring_state == MonitoringState.AVAILABLE:
+                watchable_movies.append(movie)
+                continue
+
+            if movie.status_detail in {"Announced", "In Theaters"}:
+                continue
+
             if movie.release_date is None:
                 continue
 
@@ -131,9 +139,9 @@ class TrendingMoviesService:
                 continue
 
             if release_date <= date.today():
-                released_movies.append(movie)
+                watchable_movies.append(movie)
 
-        return released_movies
+        return watchable_movies
 
     def _load_state(self) -> TrendingMoviesState | None:
         if not self.STATE_FILE.exists():

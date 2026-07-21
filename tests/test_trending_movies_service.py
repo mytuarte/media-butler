@@ -197,6 +197,34 @@ class TrendingMoviesServiceTests(unittest.TestCase):
 
         self.assertEqual(self.discord.sent[0].description, "⚪ Example Movie")
 
+    def test_digitally_released_movie_appears_in_dashboard(self):
+        service = self.create_service()
+        digital_movie = DiscoveryItem(
+            title="Digital Movie",
+            media_type="movie",
+            tmdb_id=2,
+            release_date=date.today().isoformat(),
+            monitoring_state=MonitoringState.COMING_SOON,
+            status_detail="Released",
+        )
+
+        self.run_cycle(service, [digital_movie])
+
+        self.assertEqual(self.discord.sent[0].description, "🟡 Digital Movie")
+
+    def test_plex_owned_movie_appears_without_a_release_date(self):
+        service = self.create_service()
+        plex_movie = DiscoveryItem(
+            title="Plex Movie",
+            media_type="movie",
+            tmdb_id=2,
+            monitoring_state=MonitoringState.AVAILABLE,
+        )
+
+        self.run_cycle(service, [plex_movie])
+
+        self.assertEqual(self.discord.sent[0].description, "🟢 Plex Movie")
+
     def test_future_release_movie_is_excluded_from_dashboard(self):
         service = self.create_service()
         future_movie = DiscoveryItem(
@@ -219,6 +247,21 @@ class TrendingMoviesServiceTests(unittest.TestCase):
         )
 
         self.run_cycle(service, self.movies() + [announced_movie])
+
+        self.assertEqual(self.discord.sent[0].description, "⚪ Example Movie")
+
+    def test_in_theaters_only_movie_is_excluded_from_dashboard(self):
+        service = self.create_service()
+        theatrical_movie = DiscoveryItem(
+            title="The Odyssey",
+            media_type="movie",
+            tmdb_id=2,
+            release_date=date.today().isoformat(),
+            monitoring_state=MonitoringState.COMING_SOON,
+            status_detail="In Theaters",
+        )
+
+        self.run_cycle(service, self.movies() + [theatrical_movie])
 
         self.assertEqual(self.discord.sent[0].description, "⚪ Example Movie")
 
