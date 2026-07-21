@@ -5,7 +5,9 @@ import unittest
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
+from config import Config
 from models.health_issue import HealthIssue
 from services.health_monitor_service import HealthMonitorService
 from services.registry import services
@@ -37,10 +39,16 @@ class HealthMonitorServiceTests(unittest.TestCase):
         self.state_file = Path(self.temporary_directory.name) / "health_alerts.json"
         self.discord = FakeDiscordService()
         self.previous_discord = services.discord
+        self.previous_media_root = Config.MEDIA_ROOT
+        self.previous_warning_threshold = Config.STORAGE_WARNING_THRESHOLD_PERCENT
+        self.previous_critical_threshold = Config.STORAGE_CRITICAL_THRESHOLD_PERCENT
         services.discord = self.discord
 
     def tearDown(self):
         services.discord = self.previous_discord
+        Config.MEDIA_ROOT = self.previous_media_root
+        Config.STORAGE_WARNING_THRESHOLD_PERCENT = self.previous_warning_threshold
+        Config.STORAGE_CRITICAL_THRESHOLD_PERCENT = self.previous_critical_threshold
         self.temporary_directory.cleanup()
 
     def create_monitor(self):
@@ -175,6 +183,83 @@ class HealthMonitorServiceTests(unittest.TestCase):
         self.assertEqual(self.discord.deleted, [101])
         self.assertEqual(restarted_monitor.alert_messages, {})
         self.assertEqual(json.loads(self.state_file.read_text()), {})
+
+    def test_storage_check_creates_warning_with_configured_path_details(self):
+        monitor = self.create_monitor()
+        Config.MEDIA_ROOT = self.temporary_directory.name
+        Config.STORAGE_WARNING_THRESHOLD_PERCENT = 15
+        Config.STORAGE_CRITICAL_THRESHOLD_PERCENT = 5
+
+        with patch(
+            "services.health_monitor_service.shutil.disk_usage",
+            return_value=(1000, 900, 100),
+        ):
+            issues, checked = monitor._check_storage()
+
+        self.assertTrue(checked)
+        self.assertEqual(len(issues), 1)
+        self.assertEqual(issues[0].severity, "warning")
+        self.assertEqual(
+            issues[0].details,
+            "\n".join(
+                [
+                    f"Monitored Path: {Path(Config.MEDIA_ROOT)}",
+                    "Total Capacity: 1000.0 B",
+                    "Available Capacity: 100.0 B",
+                    "Available Percentage: 10.0%",
+                ]
+            ),
+        )
+
+    def test_storage_check_creates_critical_issue_before_warning(self):
+        monitor = self.create_monitor()
+        Config.MEDIA_ROOT = self.temporary_directory.name
+        Config.STORAGE_WARNING_THRESHOLD_PERCENT = 15
+        Config.STORAGE_CRITICAL_THRESHOLD_PERCENT = 5
+
+        with patch(
+            "services.health_monitor_service.shutil.disk_usage",
+            return_value=(1000, 960, 40),
+        ):
+            issues, checked = monitor._check_storage()
+
+        self.assertTrue(checked)
+        self.assertEqual(issues[0].severity, "critical")
+
+    def test_storage_check_requires_an_existing_configured_media_root(self):
+        monitor = self.create_monitor()
+        Config.MEDIA_ROOT = None
+
+        with patch("services.health_monitor_service.shutil.disk_usage") as disk_usage:
+            issues, checked = monitor._check_storage()
+
+        self.assertEqual(issues, [])
+        self.assertFalse(checked)
+        disk_usage.assert_not_called()
+
+        Config.MEDIA_ROOT = str(Path(self.temporary_directory.name) / "missing")
+
+        with patch("services.health_monitor_service.shutil.disk_usage") as disk_usage:
+            issues, checked = monitor._check_storage()
+
+        self.assertEqual(issues, [])
+        self.assertFalse(checked)
+        disk_usage.assert_not_called()
+
+    def test_storage_check_is_healthy_at_the_warning_threshold(self):
+        monitor = self.create_monitor()
+        Config.MEDIA_ROOT = self.temporary_directory.name
+        Config.STORAGE_WARNING_THRESHOLD_PERCENT = 15
+        Config.STORAGE_CRITICAL_THRESHOLD_PERCENT = 5
+
+        with patch(
+            "services.health_monitor_service.shutil.disk_usage",
+            return_value=(1000, 850, 150),
+        ):
+            issues, checked = monitor._check_storage()
+
+        self.assertTrue(checked)
+        self.assertEqual(issues, [])
 
 
 if __name__ == "__main__":

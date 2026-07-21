@@ -1,12 +1,15 @@
 import asyncio
 import json
+import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from config import Config
 from models.health_issue import HealthIssue
 from services.pipeline_monitor_service import PipelineMonitorService
 from services.registry import services
 from services.sabnzbd_client import SabnzbdClient
+from utils.formatting import format_size
 
 
 class HealthMonitorService:
@@ -15,6 +18,7 @@ class HealthMonitorService:
 
     DOWNLOADS_MONITOR_SOURCE = "downloads"
     PIPELINE_MONITOR_SOURCE = "pipeline"
+    STORAGE_MONITOR_SOURCE = "storage"
 
     HEALTH_STATE_FILE = Path("data/health_alerts.json")
 
@@ -74,6 +78,14 @@ class HealthMonitorService:
         if downloads_checked:
             self.successful_monitor_sources.add(
                 self.DOWNLOADS_MONITOR_SOURCE,
+            )
+
+        storage_issues, storage_checked = self._check_storage()
+        issues.extend(storage_issues)
+
+        if storage_checked:
+            self.successful_monitor_sources.add(
+                self.STORAGE_MONITOR_SOURCE,
             )
 
         try:
@@ -234,6 +246,9 @@ class HealthMonitorService:
         if issue.issue_type == "pipeline":
             return self.PIPELINE_MONITOR_SOURCE
 
+        if issue.issue_type == "storage":
+            return self.STORAGE_MONITOR_SOURCE
+
         return self.DOWNLOADS_MONITOR_SOURCE
 
     def _update_alert(
@@ -302,7 +317,58 @@ class HealthMonitorService:
         if issue_type == "pipeline":
             return self.PIPELINE_MONITOR_SOURCE
 
+        if issue_type == "storage":
+            return self.STORAGE_MONITOR_SOURCE
+
         return self.DOWNLOADS_MONITOR_SOURCE
+
+    def _check_storage(self) -> tuple[list[HealthIssue], bool]:
+        media_root = Config.MEDIA_ROOT
+
+        if not media_root:
+            print("[Health Monitor] Storage check failed: MEDIA_ROOT is not configured.")
+            return [], False
+
+        monitored_path = Path(media_root)
+
+        if not monitored_path.is_dir():
+            print(
+                "[Health Monitor] Storage check failed: "
+                f"MEDIA_ROOT is not an existing directory: {monitored_path}"
+            )
+            return [], False
+
+        try:
+            total, _, available = shutil.disk_usage(monitored_path)
+        except OSError as error:
+            print(f"[Health Monitor] Storage check failed: {error}")
+            return [], False
+
+        available_percentage = (available / total) * 100 if total else 0
+        severity = None
+
+        if available_percentage < Config.STORAGE_CRITICAL_THRESHOLD_PERCENT:
+            severity = "critical"
+        elif available_percentage < Config.STORAGE_WARNING_THRESHOLD_PERCENT:
+            severity = "warning"
+
+        if severity is None:
+            return [], True
+
+        return [
+            HealthIssue(
+                title="NAS Storage Low",
+                issue_type="storage",
+                details=(
+                    f"Monitored Path: {monitored_path}\n"
+                    f"Total Capacity: {format_size(total)}\n"
+                    f"Available Capacity: {format_size(available)}\n"
+                    f"Available Percentage: {available_percentage:.1f}%"
+                ),
+                created_at=datetime.now(),
+                severity=severity,
+            )
+        ], True
 
     def _save_alert_state(self):
         try:

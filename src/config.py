@@ -68,6 +68,18 @@ class Config:
 
     # Filesystem
     MEDIA_ROOT = os.getenv("MEDIA_ROOT")
+    STORAGE_WARNING_THRESHOLD_PERCENT = int(
+        os.getenv(
+            "STORAGE_WARNING_THRESHOLD_PERCENT",
+            "15",
+        )
+    )
+    STORAGE_CRITICAL_THRESHOLD_PERCENT = int(
+        os.getenv(
+            "STORAGE_CRITICAL_THRESHOLD_PERCENT",
+            "5",
+        )
+    )
 
     # Discord Users
     USERS = {
