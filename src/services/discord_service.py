@@ -3,10 +3,12 @@ import logging
 import discord
 
 from config import Config
+from models.health_issue import HealthIssue
 from models.notification import MovieNotification
 from services.command_service import CommandService
 from services.log_service import logger
 from services.registry import services
+from views.health_alert_view import HealthAlertView
 
 
 class DiscordService:
@@ -118,7 +120,7 @@ class DiscordService:
 
     async def send_health_alert(
         self,
-        embed: discord.Embed,
+        issue: HealthIssue,
     ) -> discord.Message:
         channel = self.client.get_channel(Config.DISCORD_MEDIA_ATTENTION_CHANNEL_ID)
 
@@ -126,15 +128,43 @@ class DiscordService:
             raise RuntimeError("Media attention channel not found.")
 
         message = await channel.send(
-            embed=embed,
+            embed=HealthAlertView.build(issue),
         )
 
         return message
 
+    async def update_health_alert(
+        self,
+        message_id: int,
+        issue: HealthIssue,
+    ) -> bool | None:
+        channel = self.client.get_channel(Config.DISCORD_MEDIA_ATTENTION_CHANNEL_ID)
+
+        if channel is None:
+            raise RuntimeError("Media attention channel not found.")
+
+        try:
+            message = await channel.fetch_message(message_id)
+            await message.edit(embed=HealthAlertView.build(issue))
+
+            return True
+
+        except discord.NotFound:
+            return False
+
+        except discord.HTTPException as error:
+            logger.warning(
+                "Unable to update health alert %s: %s",
+                message_id,
+                error,
+            )
+
+            return None
+
     async def delete_health_alert(
         self,
         message_id: int,
-    ):
+    ) -> bool:
         channel = self.client.get_channel(Config.DISCORD_MEDIA_ATTENTION_CHANNEL_ID)
 
         if channel is None:
@@ -145,5 +175,16 @@ class DiscordService:
 
             await message.delete()
 
+            return True
+
         except discord.NotFound:
-            pass
+            return True
+
+        except discord.HTTPException as error:
+            logger.warning(
+                "Unable to delete health alert %s: %s",
+                message_id,
+                error,
+            )
+
+            return False

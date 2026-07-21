@@ -6,7 +6,6 @@ from flask import Blueprint, jsonify
 
 from models.health_issue import HealthIssue
 from services.scenario_service import ScenarioService
-from views.health_alert_view import HealthAlertView
 from views.movie_details_view import MovieDetailsView
 
 debug_routes = Blueprint(
@@ -156,10 +155,8 @@ def initialize(
             severity="warning",
         )
 
-        embed = HealthAlertView.build(issue)
-
         future = asyncio.run_coroutine_threadsafe(
-            discord_service.send_health_alert(embed),
+            discord_service.send_health_alert(issue),
             discord_service.client.loop,
         )
 
@@ -217,10 +214,8 @@ def initialize(
             severity="warning",
         )
 
-        embed = HealthAlertView.build(issue)
-
         future = asyncio.run_coroutine_threadsafe(
-            discord_service.send_health_alert(embed),
+            discord_service.send_health_alert(issue),
             discord_service.client.loop,
         )
 
