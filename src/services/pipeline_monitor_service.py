@@ -73,10 +73,14 @@ class PipelineMonitorService:
             if not movie.get("isAvailable"):
                 continue
 
-            if not self._is_old_request(
-                request,
-                now,
-            ):
+            requested_date = self._get_request_date(request)
+
+            if requested_date is None:
+                continue
+
+            waiting_time = now - requested_date
+
+            if waiting_time < timedelta(hours=self.REQUEST_THRESHOLD_HOURS):
                 continue
 
             title = movie.get(
@@ -92,17 +96,19 @@ class PipelineMonitorService:
 
             issues.append(
                 HealthIssue(
-                    title=f"Pipeline: {title}",
+                    title=f"Pipeline Stalled: {title}",
                     issue_type="pipeline",
                     details=(
                         "Movie appears stuck in acquisition pipeline.\n\n"
-                        f"Movie: {title}\n"
-                        "Requested: Yes\n"
-                        "Released: Yes\n"
-                        "Digital Available: Yes\n"
-                        "Radarr Monitored: Yes\n"
-                        "File Exists: No\n"
-                        "Download Queue: Not Found\n\n"
+                        f"Movie: {title}\n\n"
+                        f"Requested: {requested_date:%Y-%m-%d %H:%M}\n"
+                        f"Waiting: {self._format_duration(waiting_time)}\n\n"
+                        "Status:\n"
+                        "- Released: Yes\n"
+                        "- Digital Available: Yes\n"
+                        "- Radarr Monitored: Yes\n"
+                        "- File Exists: No\n"
+                        "- Download Queue: Not Found\n\n"
                         "Possible causes:\n"
                         "- Radarr has not found a release\n"
                         "- Indexers returned no results\n"
@@ -115,17 +121,16 @@ class PipelineMonitorService:
 
         return issues
 
-    def _is_old_request(
+    def _get_request_date(
         self,
         request: dict,
-        now: datetime,
-    ) -> bool:
+    ) -> datetime | None:
         requested_date = request.get("createdAt")
 
         if requested_date is None:
-            return False
+            return None
 
-        created = datetime.fromisoformat(
+        return datetime.fromisoformat(
             requested_date.replace(
                 "Z",
                 "+00:00",
@@ -134,7 +139,19 @@ class PipelineMonitorService:
             tzinfo=None,
         )
 
-        return now - created >= timedelta(hours=self.REQUEST_THRESHOLD_HOURS)
+    def _format_duration(
+        self,
+        duration: timedelta,
+    ) -> str:
+        hours = int(duration.total_seconds() // 3600)
+
+        days = hours // 24
+        hours = hours % 24
+
+        if days:
+            return f"{days} days, {hours} hours"
+
+        return f"{hours} hours"
 
     def _is_in_queue(
         self,
