@@ -25,6 +25,7 @@ from services.registry import services
 from services.search.sonarr_search_service import SonarrSearchService
 from services.search_channel_service import SearchChannelService
 from services.sonarr_service import SonarrService
+from services.trending_movies_service import TrendingMoviesService
 
 app = Flask(__name__)
 
@@ -47,6 +48,7 @@ services.delete = DeleteService()
 services.search_channel = SearchChannelService()
 
 services.health_monitor = HealthMonitorService()
+services.trending_movies = TrendingMoviesService()
 
 
 initialize_webhook_routes(

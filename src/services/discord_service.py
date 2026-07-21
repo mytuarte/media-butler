@@ -37,6 +37,10 @@ class DiscordService:
 
                 logger.info("Health monitor started.")
 
+            if services.trending_movies:
+                if services.trending_movies.start():
+                    logger.info("Trending movies scheduler started.")
+
         @self.client.event
         async def on_message(message):
             # Ignore messages from bots (including ourselves)
@@ -132,6 +136,75 @@ class DiscordService:
         )
 
         return message
+
+    async def send_trending_movies(
+        self,
+        embed: discord.Embed,
+    ) -> discord.Message:
+        channel = self._get_trending_movies_channel()
+
+        return await channel.send(embed=embed)
+
+    async def trending_movies_message_exists(
+        self,
+        message_id: int,
+    ) -> bool | None:
+        channel = self._get_trending_movies_channel()
+
+        try:
+            await channel.fetch_message(message_id)
+
+            return True
+
+        except discord.NotFound:
+            return False
+
+        except discord.HTTPException as error:
+            logger.warning(
+                "Unable to fetch trending movies message %s: %s",
+                message_id,
+                error,
+            )
+
+            return None
+
+    async def update_trending_movies(
+        self,
+        message_id: int,
+        embed: discord.Embed,
+    ) -> bool | None:
+        channel = self._get_trending_movies_channel()
+
+        try:
+            message = await channel.fetch_message(message_id)
+            await message.edit(embed=embed)
+
+            return True
+
+        except discord.NotFound:
+            return False
+
+        except discord.HTTPException as error:
+            logger.warning(
+                "Unable to update trending movies message %s: %s",
+                message_id,
+                error,
+            )
+
+            return None
+
+    def _get_trending_movies_channel(self):
+        channel_id = Config.DISCORD_TRENDING_MOVIES_CHANNEL_ID
+
+        if channel_id is None:
+            raise RuntimeError("Trending movies channel is not configured.")
+
+        channel = self.client.get_channel(channel_id)
+
+        if channel is None:
+            raise RuntimeError("Trending movies channel not found.")
+
+        return channel
 
     async def update_health_alert(
         self,

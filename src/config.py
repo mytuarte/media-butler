@@ -12,6 +12,19 @@ dotenv_file = "config/.env.dev" if environment == "dev" else "config/.env"
 load_dotenv(dotenv_file)
 
 
+def _optional_int(name: str) -> int | None:
+    value = os.getenv(name)
+
+    return int(value) if value else None
+
+
+def _float_config_value(
+    name: str,
+    default: str,
+) -> float:
+    return float(os.getenv(name, default))
+
+
 class Config:
     ENVIRONMENT = environment
 
@@ -23,6 +36,9 @@ class Config:
     DISCORD_MEDIA_SEARCH_CHANNEL_ID = int(os.getenv("DISCORD_MEDIA_SEARCH_CHANNEL_ID"))
     DISCORD_MEDIA_ATTENTION_CHANNEL_ID = int(
         os.getenv("DISCORD_MEDIA_ATTENTION_CHANNEL_ID")
+    )
+    DISCORD_TRENDING_MOVIES_CHANNEL_ID = _optional_int(
+        "DISCORD_TRENDING_MOVIES_CHANNEL_ID"
     )
     DELETE_SEARCH_MESSAGES = (
         os.getenv(
@@ -49,6 +65,10 @@ class Config:
 
     # TMDb
     TMDB_API_KEY = os.getenv("TMDB_API_KEY")
+    TRENDING_MOVIES_INTERVAL_HOURS = _float_config_value(
+        "TRENDING_MOVIES_INTERVAL_HOURS",
+        "24",
+    )
 
     # Radarr
     RADARR_URL = os.getenv("RADARR_URL")
