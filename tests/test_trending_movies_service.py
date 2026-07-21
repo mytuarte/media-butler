@@ -1,0 +1,168 @@
+import asyncio
+import json
+import tempfile
+import unittest
+from pathlib import Path
+from types import SimpleNamespace
+
+from config import Config
+from models.discovery.discovery_item import DiscoveryItem
+from models.monitoring_state import MonitoringState
+from models.trending_movies_state import TrendingMoviesState
+from services.registry import services
+from services.trending_movies_service import TrendingMoviesService
+
+
+class FakeDiscordService:
+    def __init__(self):
+        self.sent = []
+        self.updated = []
+        self.checked = []
+        self.message_exists = True
+        self.update_result = True
+
+    async def send_trending_movies(self, embed):
+        self.sent.append(embed)
+        return SimpleNamespace(id=100 + len(self.sent))
+
+    async def trending_movies_message_exists(self, message_id):
+        self.checked.append(message_id)
+        return self.message_exists
+
+    async def update_trending_movies(self, message_id, embed):
+        self.updated.append((message_id, embed))
+        return self.update_result
+
+
+class TrendingMoviesServiceTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.state_file = Path(self.temporary_directory.name) / "trending_movies.json"
+        self.discord = FakeDiscordService()
+        self.previous_discord = services.discord
+        self.previous_channel_id = Config.DISCORD_TRENDING_MOVIES_CHANNEL_ID
+        self.previous_interval = Config.TRENDING_MOVIES_INTERVAL_HOURS
+        services.discord = self.discord
+        Config.DISCORD_TRENDING_MOVIES_CHANNEL_ID = 123
+        Config.TRENDING_MOVIES_INTERVAL_HOURS = 24
+
+    def tearDown(self):
+        services.discord = self.previous_discord
+        Config.DISCORD_TRENDING_MOVIES_CHANNEL_ID = self.previous_channel_id
+        Config.TRENDING_MOVIES_INTERVAL_HOURS = self.previous_interval
+        self.temporary_directory.cleanup()
+
+    def create_service(self):
+        service = TrendingMoviesService()
+        service.STATE_FILE = self.state_file
+        service.state = service._load_state()
+        return service
+
+    @staticmethod
+    def movies(status=MonitoringState.NOT_ADDED):
+        return [
+            DiscoveryItem(
+                title="Example Movie",
+                media_type="movie",
+                tmdb_id=1,
+                monitoring_state=status,
+            )
+        ]
+
+    def run_cycle(self, service, movies):
+        service.discovery.get_trending_movies = lambda: movies
+        asyncio.run(service.run_cycle())
+
+    def test_first_cycle_posts_dashboard_and_persists_state(self):
+        service = self.create_service()
+        movies = self.movies()
+
+        self.run_cycle(service, movies)
+
+        self.assertEqual(len(self.discord.sent), 1)
+        self.assertEqual(service.state.message_id, 101)
+        self.assertEqual(
+            json.loads(self.state_file.read_text())["fingerprint"],
+            service._fingerprint(movies),
+        )
+
+    def test_restart_with_unchanged_content_does_not_post_or_edit(self):
+        initial_service = self.create_service()
+        movies = self.movies()
+        self.run_cycle(initial_service, movies)
+
+        restarted_service = self.create_service()
+        self.run_cycle(restarted_service, movies)
+
+        self.assertEqual(self.discord.checked, [101])
+        self.assertEqual(len(self.discord.sent), 1)
+        self.assertEqual(self.discord.updated, [])
+
+    def test_changed_content_edits_existing_dashboard_message(self):
+        service = self.create_service()
+        self.run_cycle(service, self.movies())
+
+        self.run_cycle(service, self.movies(MonitoringState.AVAILABLE))
+
+        self.assertEqual(len(self.discord.sent), 1)
+        self.assertEqual(self.discord.updated[0][0], 101)
+        self.assertEqual(service.state.message_id, 101)
+
+    def test_missing_dashboard_message_is_replaced(self):
+        service = self.create_service()
+        self.run_cycle(service, self.movies())
+        self.discord.message_exists = False
+        self.discord.update_result = False
+
+        self.run_cycle(service, self.movies())
+
+        self.assertEqual(len(self.discord.sent), 2)
+        self.assertEqual(service.state.message_id, 102)
+
+    def test_failed_edit_keeps_previous_state_for_retry(self):
+        service = self.create_service()
+        original_movies = self.movies()
+        self.run_cycle(service, original_movies)
+        original_fingerprint = service.state.fingerprint
+        self.discord.update_result = None
+
+        self.run_cycle(service, self.movies(MonitoringState.AVAILABLE))
+
+        self.assertEqual(service.state.fingerprint, original_fingerprint)
+        self.assertEqual(len(self.discord.sent), 1)
+
+    def test_non_visible_fields_do_not_change_fingerprint(self):
+        original = self.movies()[0]
+        changed = DiscoveryItem(
+            title=original.title,
+            media_type=original.media_type,
+            tmdb_id=original.tmdb_id,
+            release_date="2026-01-01",
+            poster_url="https://example.test/poster.jpg",
+            overview="Changed overview",
+            requester="Example User",
+        )
+
+        self.assertEqual(
+            TrendingMoviesService._fingerprint([original]),
+            TrendingMoviesService._fingerprint([changed]),
+        )
+
+    def test_start_is_disabled_without_a_trending_movies_channel(self):
+        service = self.create_service()
+        Config.DISCORD_TRENDING_MOVIES_CHANNEL_ID = None
+
+        service.start()
+
+        self.assertFalse(service.running)
+        self.assertIsNone(service._task)
+
+    def test_state_model_rejects_invalid_message_id(self):
+        with self.assertRaises(ValueError):
+            TrendingMoviesState.from_dict(
+                {
+                    "fingerprint": "abc",
+                    "message_id": "101",
+                    "updated_at": "2026-07-21T12:00:00+00:00",
+                }
+            )

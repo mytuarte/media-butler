@@ -15,6 +15,7 @@ class ServiceRegistry:
         self.search_channel = None
 
         self.health_monitor = None
+        self.trending_movies = None
 
 
 services = ServiceRegistry()
