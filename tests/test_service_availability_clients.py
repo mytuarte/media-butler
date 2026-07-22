@@ -1,4 +1,6 @@
 import unittest
+
+import requests
 from unittest.mock import Mock, patch
 
 from config import Config
@@ -105,139 +107,164 @@ class ServiceAvailabilityClientTests(unittest.TestCase):
         )
         response.raise_for_status.assert_called_once_with()
 
-    def plex_responses(self, movies):
-        sections_response = Mock(status_code=200)
-        sections_response.json.return_value = {
-            "MediaContainer": {
-                "Directory": [{"key": "2", "title": "Movies", "type": "movie"}]
-            }
-        }
-        movies_response = Mock(status_code=200)
-        movies_response.json.return_value = {
-            "MediaContainer": {"totalSize": len(movies), "Metadata": movies}
-        }
-        return sections_response, movies_response
+    def plex_response(self, payload):
+        response = Mock(status_code=200)
+        response.json.return_value = payload
+        return response
 
-    def test_plex_movie_lookup_logs_unmatched_results_without_changing_matching(self):
-        with patch("services.plex_service.requests.get") as get:
-            sections, movies = self.plex_responses([{"Guid": [{"id": "tmdb://999"}]}])
-            diagnostic = Mock(status_code=200)
-            diagnostic.json.return_value = {"MediaContainer": {"Metadata": []}}
-            get.side_effect = [sections, movies, diagnostic]
-
-            with self.assertLogs("media-butler", level="INFO") as logs:
-                available = PlexService().movie_is_available(353491, "The Martian")
-
-        self.assertFalse(available)
-        self.assertIn("tmdb_id=353491", "\n".join(logs.output))
-        self.assertIn("tmdb://999", "\n".join(logs.output))
-        self.assertIn(
-            "no result contained TMDb GUID tmdb://353491", "\n".join(logs.output)
+    def plex_responses(self, movies, sections=None):
+        sections = sections or [{"key": "2", "title": "Movies", "type": "movie"}]
+        return (
+            self.plex_response({"MediaContainer": {"Directory": sections}}),
+            self.plex_response(
+                {"MediaContainer": {"totalSize": len(movies), "Metadata": movies}}
+            ),
         )
 
-    def test_plex_movie_lookup_logs_diagnostic_response_details(self):
-        item = {
-            "title": "The Martian",
-            "year": 2015,
-            "ratingKey": "42",
-            "Guid": [{"id": "plex://movie/42"}, {"id": "tmdb://353491"}],
-            "librarySectionID": "2",
-            "librarySectionTitle": "Movies",
-        }
+    def test_plex_movie_lookup_matches_exact_tmdb_guid(self):
         with patch("services.plex_service.requests.get") as get:
-            get.side_effect = self.plex_responses([item])
-            with self.assertLogs("media-butler", level="INFO") as logs:
-                available = PlexService().movie_is_available(353491, "The Martian")
+            get.side_effect = self.plex_responses(
+                [{"Guid": [{"id": "plex://movie/42"}, {"id": "tmdb://353491"}]}]
+            )
 
-        output = "\n".join(logs.output)
-        self.assertTrue(available)
-        self.assertIn("endpoint=http://plex/library/sections/2/all", output)
-        self.assertIn("http_status=200", output)
-        self.assertIn("result count: 1", output)
-        self.assertIn("title='The Martian' year=2015 ratingKey='42'", output)
-        self.assertIn("tmdb://353491", output)
-        self.assertIn(
-            "library sections searched: [{'key': '2', 'title': 'Movies'}]", output
-        )
-
-    def test_plex_movie_lookup_logs_zero_result_response_details(self):
-        with patch("services.plex_service.requests.get") as get:
-            sections, movies = self.plex_responses([])
-            movies.json.return_value = {
-                "MediaContainer": {"size": 0, "totalSize": 0, "Metadata": []}
-            }
-            diagnostic = Mock(status_code=200)
-            diagnostic.json.return_value = {"MediaContainer": {"Metadata": []}}
-            get.side_effect = [sections, movies, diagnostic]
-            with self.assertLogs("media-butler", level="INFO") as logs:
-                available = PlexService().movie_is_available(353491, "The Martian")
-
-        self.assertFalse(available)
-        self.assertEqual(get.call_count, 3)
-        output = "\n".join(logs.output)
-        self.assertIn("result count: 0", output)
-        self.assertIn("Plex title fallback diagnostic request", output)
-        self.assertIn(
-            "returned zero results: response_details={'size': 0, 'totalSize': 0}",
-            output,
-        )
-
-    def test_plex_movie_lookup_matches_tmdb_guid_with_section_inventory_query(self):
-        with patch("services.plex_service.requests.get") as get:
-            get.side_effect = self.plex_responses([{"Guid": [{"id": "tmdb://353491"}]}])
             available = PlexService().movie_is_available(353491, "The Martian")
 
         self.assertTrue(available)
         self.assertEqual(get.call_count, 2)
         self.assertEqual(get.call_args_list[0].args, ("http://plex/library/sections",))
         self.assertEqual(
-            get.call_args_list[0].kwargs,
-            {
-                "params": {"X-Plex-Token": "plex-token"},
-                "headers": {"Accept": "application/json"},
-                "timeout": 10,
-            },
-        )
-        self.assertEqual(
             get.call_args_list[1].args, ("http://plex/library/sections/2/all",)
         )
-        self.assertEqual(
-            get.call_args_list[1].kwargs,
-            {
-                "params": {
-                    "X-Plex-Token": "plex-token",
-                    "type": 1,
-                    "includeGuids": 1,
-                    "X-Plex-Container-Start": 0,
-                    "X-Plex-Container-Size": 1000,
-                },
-                "headers": {"Accept": "application/json"},
-                "timeout": 10,
-            },
-        )
+        self.assertEqual(get.call_args_list[1].kwargs["params"]["includeGuids"], 1)
 
-    def test_plex_movie_lookup_checks_each_page_for_an_exact_tmdb_guid(self):
+    def test_plex_movie_lookup_rejects_different_or_missing_tmdb_guid(self):
         with patch("services.plex_service.requests.get") as get:
-            sections, first_page = self.plex_responses(
-                [{"Guid": [{"id": "tmdb://999"}]}]
+            get.side_effect = self.plex_responses(
+                [
+                    {"Guid": [{"id": "tmdb://999"}]},
+                    {"Guid": [{"id": "plex://movie/43"}]},
+                ]
             )
-            first_page.json.return_value["MediaContainer"]["totalSize"] = 2
-            second_page = Mock(status_code=200)
-            second_page.json.return_value = {
-                "MediaContainer": {
-                    "totalSize": 2,
-                    "Metadata": [{"Guid": [{"id": "tmdb://353491"}]}],
-                }
-            }
-            get.side_effect = [sections, first_page, second_page]
+
+            service = PlexService()
+            self.assertFalse(service.movie_is_available(353491, "The Martian"))
+            self.assertFalse(service.movie_is_available(9999, "Other Movie"))
+
+        self.assertEqual(get.call_count, 2)
+
+    def test_plex_movie_lookup_does_not_use_title_as_availability_fallback(self):
+        with patch("services.plex_service.requests.get") as get:
+            get.side_effect = self.plex_responses(
+                [{"title": "The Martian", "Guid": [{"id": "tmdb://999"}]}]
+            )
 
             available = PlexService().movie_is_available(353491, "The Martian")
 
+        self.assertFalse(available)
+        self.assertEqual(get.call_count, 2)
+
+    def test_plex_movie_inventory_is_reused_within_cache_lifetime(self):
+        with patch("services.plex_service.requests.get") as get:
+            get.side_effect = self.plex_responses([{"Guid": [{"id": "tmdb://353491"}]}])
+            service = PlexService()
+
+            self.assertTrue(service.movie_is_available(353491, "The Martian"))
+            self.assertFalse(service.movie_is_available(999, "Unrelated"))
+
+        self.assertEqual(get.call_count, 2)
+
+    def test_plex_movie_inventory_refreshes_after_cache_expiration(self):
+        with patch("services.plex_service.requests.get") as get, patch(
+            "services.plex_service.time.monotonic", side_effect=[100, 401, 401]
+        ):
+            get.side_effect = [
+                *self.plex_responses([{"Guid": [{"id": "tmdb://353491"}]}]),
+                *self.plex_responses([{"Guid": [{"id": "tmdb://999"}]}]),
+            ]
+            service = PlexService()
+
+            self.assertTrue(service.movie_is_available(353491, "The Martian"))
+            self.assertTrue(service.movie_is_available(999, "Other"))
+
+        self.assertEqual(get.call_count, 4)
+
+    def test_failed_refresh_does_not_overwrite_valid_movie_inventory(self):
+        with patch("services.plex_service.requests.get") as get, patch(
+            "services.plex_service.time.monotonic", side_effect=[100, 401]
+        ):
+            sections, movies = self.plex_responses(
+                [{"Guid": [{"id": "tmdb://353491"}]}]
+            )
+            failure = requests.ConnectionError("connection refused")
+            get.side_effect = [sections, movies, failure]
+            service = PlexService()
+
+            self.assertTrue(service.movie_is_available(353491, "The Martian"))
+            with self.assertRaises(requests.ConnectionError):
+                service.movie_is_available(999, "Other")
+
+        self.assertIn(353491, service._movie_inventory)
+        self.assertEqual(service._movie_inventory_refreshed_at, 100)
+
+    def test_plex_movie_inventory_pages_multiple_movie_sections(self):
+        sections = [
+            {"key": "2", "title": "Movies", "type": "movie"},
+            {"key": "3", "title": "More Movies", "type": "movie"},
+            {"key": "4", "title": "Shows", "type": "show"},
+        ]
+        first_page = self.plex_response(
+            {
+                "MediaContainer": {
+                    "totalSize": 2,
+                    "Metadata": [{"Guid": [{"id": "tmdb://1"}]}],
+                }
+            }
+        )
+        second_page = self.plex_response(
+            {
+                "MediaContainer": {
+                    "totalSize": 2,
+                    "Metadata": [{"Guid": [{"id": "tmdb://2"}]}],
+                }
+            }
+        )
+        other_section = self.plex_response(
+            {
+                "MediaContainer": {
+                    "totalSize": 1,
+                    "Metadata": [{"Guid": [{"id": "tmdb://353491"}]}],
+                }
+            }
+        )
+        with patch("services.plex_service.requests.get") as get:
+            get.side_effect = [
+                self.plex_response({"MediaContainer": {"Directory": sections}}),
+                first_page,
+                second_page,
+                other_section,
+            ]
+            available = PlexService().movie_is_available(353491, "The Martian")
+
         self.assertTrue(available)
-        self.assertEqual(get.call_count, 3)
+        self.assertEqual(get.call_count, 4)
         self.assertEqual(
             get.call_args_list[2].kwargs["params"]["X-Plex-Container-Start"], 1
         )
+        self.assertEqual(
+            get.call_args_list[3].args, ("http://plex/library/sections/3/all",)
+        )
+
+    def test_plex_movie_lookup_logs_refresh_and_match_concisely(self):
+        with patch("services.plex_service.requests.get") as get:
+            get.side_effect = self.plex_responses([{"Guid": [{"id": "tmdb://353491"}]}])
+            with self.assertLogs("media-butler", level="INFO") as logs:
+                PlexService().movie_is_available(353491, "The Martian")
+
+        output = "\n".join(logs.output)
+        self.assertIn("inventory refresh started", output)
+        self.assertIn("movie_sections=1 movies_indexed=1", output)
+        self.assertIn("availability match found: tmdb_id=353491", output)
+        self.assertNotIn("Plex movie lookup result:", output)
 
 
 if __name__ == "__main__":

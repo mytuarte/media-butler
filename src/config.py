@@ -40,9 +40,7 @@ class Config:
     DISCORD_TRENDING_MOVIES_CHANNEL_ID = _optional_int(
         "DISCORD_TRENDING_MOVIES_CHANNEL_ID"
     )
-    DISCORD_TRENDING_TV_CHANNEL_ID = _optional_int(
-        "DISCORD_TRENDING_TV_CHANNEL_ID"
-    )
+    DISCORD_TRENDING_TV_CHANNEL_ID = _optional_int("DISCORD_TRENDING_TV_CHANNEL_ID")
     DELETE_SEARCH_MESSAGES = (
         os.getenv(
             "DELETE_SEARCH_MESSAGES",
@@ -103,6 +101,10 @@ class Config:
     # Plex
     PLEX_URL = os.getenv("PLEX_URL")
     PLEX_TOKEN = os.getenv("PLEX_TOKEN")
+    PLEX_INVENTORY_CACHE_SECONDS = _float_config_value(
+        "PLEX_INVENTORY_CACHE_SECONDS",
+        "300",
+    )
 
     # Filesystem
     MEDIA_ROOT = os.getenv("MEDIA_ROOT")
