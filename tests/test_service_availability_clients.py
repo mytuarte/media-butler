@@ -105,6 +105,21 @@ class ServiceAvailabilityClientTests(unittest.TestCase):
         )
         response.raise_for_status.assert_called_once_with()
 
+    def test_plex_movie_lookup_logs_unmatched_results_without_changing_matching(self):
+        with patch("services.plex_service.requests.get") as get:
+            response = get.return_value
+            response.json.return_value = {
+                "MediaContainer": {"Metadata": [{"Guid": [{"id": "tmdb://999"}]}]}
+            }
+
+            with self.assertLogs("media-butler", level="INFO") as logs:
+                available = PlexService().movie_is_available(353491, "The Martian")
+
+        self.assertFalse(available)
+        self.assertIn("tmdb_id=353491", "\n".join(logs.output))
+        self.assertIn("tmdb://999", "\n".join(logs.output))
+        self.assertIn("no result contained TMDb GUID tmdb://353491", "\n".join(logs.output))
+
     def test_plex_movie_lookup_matches_tmdb_guid(self):
         with patch("services.plex_service.requests.get") as get:
             response = get.return_value

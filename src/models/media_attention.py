@@ -73,6 +73,45 @@ class PipelineSnapshot:
 
 
 @dataclass
+class MediaAttentionAlert:
+    media_key: str
+    media_type: MediaAttentionMediaType
+    tmdb_id: int
+    request_id: int
+    title: str
+    stage: PipelineStage
+    status: str
+    created_at: datetime
+    message_id: int | None = None
+    resolved_at: datetime | None = None
+    details_fingerprint: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "media_key": self.media_key,
+            "media_type": self.media_type.value, "tmdb_id": self.tmdb_id,
+            "request_id": self.request_id, "title": self.title,
+            "stage": self.stage.value, "status": self.status,
+            "created_at": self.created_at.isoformat(), "message_id": self.message_id,
+            "resolved_at": self.resolved_at.isoformat() if self.resolved_at else None,
+            "details_fingerprint": self.details_fingerprint,
+        }
+
+    @classmethod
+    def from_dict(cls, media_key: str, data: dict) -> "MediaAttentionAlert":
+        legacy_media_key = media_key.rsplit(":stall:", 1)[0]
+        return cls(
+            media_key=data.get("media_key", legacy_media_key),
+            media_type=MediaAttentionMediaType(data["media_type"]),
+            tmdb_id=data["tmdb_id"], request_id=data["request_id"], title=data["title"],
+            stage=PipelineStage(data["stage"]), status=data["status"],
+            created_at=datetime.fromisoformat(data["created_at"]), message_id=data.get("message_id"),
+            resolved_at=datetime.fromisoformat(data["resolved_at"]) if data.get("resolved_at") else None,
+            details_fingerprint=data.get("details_fingerprint", ""),
+        )
+
+
+@dataclass
 class TrackedMedia:
     media_key: str
     media_type: MediaAttentionMediaType
