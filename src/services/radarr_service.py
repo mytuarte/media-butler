@@ -22,25 +22,46 @@ class RadarrService:
 
         request = self.overseerr.get_request(tmdb_id)
 
-        requester = None
+        requester = (
+            request.requester_discord_id
+            if request is not None and isinstance(request.requester_discord_id, int)
+            else request.requester if request is not None else None
+        )
 
-        if request is not None:
-            requester = request.requester
-
-        quality = "Unknown"
-
-        movie_file = payload.get("movieFile")
-
-        if movie_file:
-            quality = (
-                movie_file.get("quality", {}).get("quality", {}).get("name", "Unknown")
-            )
+        movie_file = payload.get("movieFile", {})
+        quality = self._parse_quality(movie_file)
 
         return MovieNotification(
             title=movie["title"],
             year=movie["year"],
             requester=requester,
             quality=quality,
+        )
+
+    @staticmethod
+    def _parse_quality(movie_file: object) -> str:
+        if not isinstance(movie_file, dict):
+            return "Unknown"
+
+        quality = movie_file.get("quality")
+
+        if isinstance(quality, str):
+            return quality or "Unknown"
+
+        if not isinstance(quality, dict):
+            return "Unknown"
+
+        direct_name = quality.get("name")
+        if isinstance(direct_name, str) and direct_name:
+            return direct_name
+
+        nested_quality = quality.get("quality")
+        if not isinstance(nested_quality, dict):
+            return "Unknown"
+
+        nested_name = nested_quality.get("name")
+        return (
+            nested_name if isinstance(nested_name, str) and nested_name else "Unknown"
         )
 
     def get_movies(self):

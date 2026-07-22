@@ -41,7 +41,7 @@ def initialize(
 
         future.result(timeout=10)
 
-        logger.info("Discord notification sent successfully.")
+        logger.info("Radarr movie notification sent for %s", notification.title)
 
         return "", 200
 
@@ -70,6 +70,6 @@ def initialize(
 
         future.result(timeout=10)
 
-        logger.info("Discord notification sent successfully.")
+        logger.info("Sonarr episode notification sent for %s", notification.title)
 
         return "", 200
