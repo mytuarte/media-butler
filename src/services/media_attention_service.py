@@ -9,7 +9,9 @@ from models.media_attention import (
 from services.discovery.tmdb_service import TmdbService
 from services.media_attention_state_store import MediaAttentionStateStore
 from services.overseerr_service import OverseerrService
+from services.plex_service import PlexService
 from services.radarr_service import RadarrService
+from services.sabnzbd_client import SabnzbdClient
 
 
 class MediaAttentionService:
@@ -23,11 +25,15 @@ class MediaAttentionService:
         overseerr: OverseerrService | None = None,
         radarr: RadarrService | None = None,
         tmdb: TmdbService | None = None,
+        sabnzbd: SabnzbdClient | None = None,
+        plex: PlexService | None = None,
     ):
         self.state_store = state_store or MediaAttentionStateStore()
         self.overseerr = overseerr or OverseerrService()
         self.radarr = radarr or RadarrService()
         self.tmdb = tmdb or TmdbService()
+        self.sabnzbd = sabnzbd or SabnzbdClient()
+        self.plex = plex or PlexService()
         self.tracked_media = self.state_store.load()
 
     def evaluate_requested_movies(
@@ -42,6 +48,9 @@ class MediaAttentionService:
             for movie in self.radarr.get_movies()
             if movie.get("tmdbId") is not None
         }
+        radarr_history = None
+        sab_queue = None
+        sab_history = None
         snapshots = []
 
         for request in requests:
@@ -52,9 +61,34 @@ class MediaAttentionService:
             if not self.tmdb.movie_has_digital_availability(tmdb_id):
                 continue
 
+            if radarr_history is None:
+                radarr_history = self.radarr.get_history().get("records", [])
+                sab_queue = self.sabnzbd.get_queue().get("queue", {}).get(
+                    "slots", []
+                )
+                sab_history = self.sabnzbd.get_history().get("history", {}).get(
+                    "slots", []
+                )
+
+            media = request["media"]
+
             snapshot = self.capture_movie_snapshot(
                 request,
                 movies_by_tmdb.get(tmdb_id),
+                sab_evidence=self._movie_sab_evidence(
+                    media.get("title") or request.get("title") or "",
+                    sab_queue,
+                    sab_history or [],
+                ),
+                plex_evidence={
+                    "available": self.plex.movie_is_available(
+                        tmdb_id,
+                        media.get("title") or request.get("title") or "",
+                    )
+                },
+                history=self._movie_history_evidence(
+                    movies_by_tmdb.get(tmdb_id), radarr_history or []
+                ),
             )
             self.evaluate_snapshot(snapshot, now)
             snapshots.append(snapshot)
@@ -70,12 +104,13 @@ class MediaAttentionService:
         movie: dict | None,
         sab_evidence: dict | None = None,
         plex_evidence: dict | None = None,
+        history: list[dict] | None = None,
     ) -> PipelineSnapshot:
         """Build a deterministic movie snapshot from currently available evidence."""
         media = request["media"]
         tmdb_id = media["tmdbId"]
         title = media.get("title") or request.get("title") or "Unknown Movie"
-        arr_evidence = self._movie_arr_evidence(movie)
+        arr_evidence = self._movie_arr_evidence(movie, history)
         sab_evidence = sab_evidence or {}
         plex_evidence = plex_evidence or {}
         stage, detail = self._resolve_movie_stage(
@@ -147,15 +182,86 @@ class MediaAttentionService:
         )
 
     @staticmethod
-    def _movie_arr_evidence(movie: dict | None) -> dict:
+    def _movie_arr_evidence(
+        movie: dict | None,
+        history: list[dict] | None = None,
+    ) -> dict:
         if movie is None:
             return {"present": False}
 
-        return {
+        evidence = {
             "present": True,
             "id": movie.get("id"),
             "has_file": movie.get("hasFile", False),
             "monitored": movie.get("monitored", False),
+        }
+        if history is not None:
+            evidence["history"] = history
+        return evidence
+
+    @classmethod
+    def _movie_history_evidence(
+        cls,
+        movie: dict | None,
+        records: list[dict],
+    ) -> list[dict]:
+        if movie is None or movie.get("id") is None:
+            return []
+        relevant = [
+            record for record in records if record.get("movieId") == movie["id"]
+        ]
+        return [
+            {
+                "event_type": record.get("eventType"),
+                "date": record.get("date"),
+                "download_id": record.get("data", {}).get("downloadId"),
+            }
+            for record in relevant[:10]
+        ]
+
+    @classmethod
+    def _movie_sab_evidence(
+        cls, title: str, queue_slots: list[dict], history_slots: list[dict]
+    ) -> dict:
+        active = cls._find_sab_slot(title, queue_slots)
+        if active is not None:
+            return cls._sab_slot_evidence(active, active=True, completed=False)
+
+        completed = cls._find_sab_slot(title, history_slots)
+        if completed is not None and str(completed.get("status", "")).lower() in {
+            "completed",
+            "complete",
+        }:
+            return cls._sab_slot_evidence(completed, active=False, completed=True)
+        return {"active": False, "completed": False}
+
+    @staticmethod
+    def _find_sab_slot(title: str, slots: list[dict]) -> dict | None:
+        normalized_title = SabnzbdClient._normalize(title)
+        if not normalized_title:
+            return None
+        return next(
+            (
+                slot
+                for slot in slots
+                if normalized_title
+                in SabnzbdClient._normalize(
+                    slot.get("filename") or slot.get("name") or ""
+                )
+            ),
+            None,
+        )
+
+    @staticmethod
+    def _sab_slot_evidence(slot: dict, active: bool, completed: bool) -> dict:
+        return {
+            "active": active,
+            "completed": completed,
+            "download_id": slot.get("nzo_id") or slot.get("id"),
+            "status": slot.get("status"),
+            "percent": slot.get("percentage"),
+            "size": slot.get("mb") or slot.get("size"),
+            "size_left": slot.get("mbleft") or slot.get("sizeleft"),
         }
 
     @staticmethod

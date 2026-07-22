@@ -39,6 +39,22 @@ class SabnzbdClient:
 
         return response.json()
 
+    def get_history(self) -> dict:
+        """Return SABnzbd history, including completed downloads."""
+        response = requests.get(
+            f"{Config.SABNZBD_URL}/api",
+            params={
+                "mode": "history",
+                "apikey": Config.SABNZBD_API_KEY,
+                "output": "json",
+            },
+            timeout=10,
+        )
+
+        response.raise_for_status()
+
+        return response.json()
+
     @staticmethod
     def _normalize(text: str) -> str:
         return text.lower().replace(".", " ").replace("_", " ").replace("-", " ")
