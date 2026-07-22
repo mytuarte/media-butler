@@ -79,6 +79,22 @@ class PlexService:
             )
 
         expected_guid = f"tmdb://{tmdb_id}"
+        if not metadata:
+            response_details = {
+                key: value
+                for key, value in media_container.items()
+                if key != "Metadata"
+            }
+            logger.info(
+                "Plex movie lookup returned zero results: response_details=%s",
+                response_details,
+            )
+            self._log_title_fallback_diagnostics(endpoint, title)
+            logger.info(
+                "Plex unavailable: no result contained TMDb GUID %s", expected_guid
+            )
+            return False
+
         for item in metadata:
             guids = item.get("Guid", [])
             external_ids = [guid.get("id") for guid in guids]

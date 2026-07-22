@@ -174,6 +174,10 @@ class ServiceAvailabilityClientTests(unittest.TestCase):
                 available = PlexService().movie_is_available(353491, "The Martian")
 
         self.assertFalse(available)
+        self.assertEqual(get.call_count, 2)
+        output = "\n".join(logs.output)
+        self.assertIn("result count: 0", output)
+        self.assertIn("Plex title fallback diagnostic request", output)
         output = "\n".join(logs.output)
         self.assertIn("result count: 0", output)
         self.assertIn(
