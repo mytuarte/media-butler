@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from config import Config
 from services.plex_service import PlexService
@@ -156,6 +156,10 @@ class ServiceAvailabilityClientTests(unittest.TestCase):
         self.assertIn("result count: 1", output)
         self.assertIn("title='The Martian' year=2015 ratingKey='42'", output)
         self.assertIn("tmdb://353491", output)
+        self.assertIn(
+            "library sections searched: {'scope': 'all', 'librarySectionID': '2'",
+            output,
+        )
         self.assertIn("library sections searched: {'scope': 'all', 'librarySectionID': '2'", output)
 
     def test_plex_movie_lookup_logs_zero_result_response_details(self):
