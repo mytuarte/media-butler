@@ -35,6 +35,7 @@ class MediaAttentionService:
         self.sabnzbd = sabnzbd or SabnzbdClient()
         self.plex = plex or PlexService()
         self.tracked_media = self.state_store.load()
+        self.last_requests_checked = 0
 
     def evaluate_requested_movies(
         self,
@@ -43,6 +44,7 @@ class MediaAttentionService:
         """Capture and evaluate all eligible movie requests for this cycle."""
         now = now or datetime.now(timezone.utc)
         requests = self.overseerr.get_requests().get("results", [])
+        self.last_requests_checked = len(requests)
         movies_by_tmdb = {
             movie.get("tmdbId"): movie
             for movie in self.radarr.get_movies()
