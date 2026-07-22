@@ -24,10 +24,32 @@ class MediaAttentionMonitorService:
         self.alert_store = alert_store or MediaAttentionAlertStore()
         self.discord = discord_service
         self.alerts = self.alert_store.load()
+        self._restore_stall_generations()
         self.interval_seconds = interval_seconds or Config.MEDIA_ATTENTION_INTERVAL_SECONDS
         self.stall_threshold = timedelta(minutes=Config.MEDIA_ATTENTION_STALL_MINUTES)
         self.running = False
         self._task = None
+
+    def _restore_stall_generations(self) -> None:
+        """Keep tracking generation ahead of persisted alert generations."""
+        generations_by_media_key: dict[str, int] = {}
+        for alert_key, alert in self.alerts.items():
+            try:
+                generation = int(alert_key.rsplit(":stall:", 1)[1])
+            except (IndexError, ValueError):
+                continue
+            generations_by_media_key[alert.media_key] = max(
+                generations_by_media_key.get(alert.media_key, 0), generation
+            )
+
+        changed = False
+        for media_key, generation in generations_by_media_key.items():
+            tracked = self.attention_service.tracked_media.get(media_key)
+            if tracked is not None and tracked.stall_generation < generation:
+                tracked.stall_generation = generation
+                changed = True
+        if changed:
+            self.attention_service.state_store.save(self.attention_service.tracked_media)
 
     def start(self) -> bool:
         if self.running:

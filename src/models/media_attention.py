@@ -98,8 +98,10 @@ class MediaAttentionAlert:
 
     @classmethod
     def from_dict(cls, media_key: str, data: dict) -> "MediaAttentionAlert":
+        legacy_media_key = media_key.rsplit(":stall:", 1)[0]
         return cls(
-            media_key=media_key, media_type=MediaAttentionMediaType(data["media_type"]),
+            media_key=data.get("media_key", legacy_media_key),
+            media_type=MediaAttentionMediaType(data["media_type"]),
             tmdb_id=data["tmdb_id"], request_id=data["request_id"], title=data["title"],
             stage=PipelineStage(data["stage"]), status=data["status"],
             created_at=datetime.fromisoformat(data["created_at"]), message_id=data.get("message_id"),

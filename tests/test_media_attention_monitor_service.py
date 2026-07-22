@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -92,12 +93,37 @@ class MediaAttentionMonitorTests(unittest.IsolatedAsyncioTestCase):
         await self.monitor.run_cycle(self.now + timedelta(minutes=41))
         self.assertEqual(len(self.discord.sent), 2)
 
-    async def test_active_alert_survives_restart(self):
+    async def test_active_alert_is_reused_after_restart(self):
         await self.monitor.run_cycle(self.now)
         await self.monitor.run_cycle(self.now + timedelta(minutes=20))
-        restarted = MediaAttentionMonitorService(self.attention, self.alert_store, self.discord)
-        self.assertEqual(len(restarted.alerts), 1)
-        self.assertEqual(next(iter(restarted.alerts.values())).status, "active")
+        original_alert = next(iter(self.monitor.alerts.values()))
+        persisted_alerts = json.loads(self.alert_store.state_file.read_text())
+        for alert in persisted_alerts["alerts"].values():
+            alert.pop("media_key")
+        self.alert_store.state_file.write_text(json.dumps(persisted_alerts))
+
+        reloaded_attention = MediaAttentionService(
+            MediaAttentionStateStore(Path(self.temp.name) / "tracking.json"),
+            self.overseerr,
+            self.radarr,
+            self.tmdb,
+            FakeSabnzbdClient(),
+            FakePlexService(),
+        )
+        restarted = MediaAttentionMonitorService(
+            reloaded_attention, self.alert_store, self.discord
+        )
+        await restarted.run_cycle(self.now + timedelta(minutes=21))
+
+        active_alerts = [alert for alert in restarted.alerts.values()
+                         if alert.status == "active"]
+        self.assertEqual(len(self.discord.sent), 1)
+        self.assertEqual(len(self.discord.updated), 1)
+        self.assertEqual(len(active_alerts), 1)
+        self.assertEqual(active_alerts[0].message_id, original_alert.message_id)
+        self.assertEqual(reloaded_attention.tracked_media[
+            "movie:tmdb:353491"
+        ].stall_generation, 1)
 
     async def test_unavailable_movie_never_enters_monitoring(self):
         self.tmdb.digitally_available = False
