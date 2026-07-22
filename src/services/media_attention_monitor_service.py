@@ -26,6 +26,7 @@ class MediaAttentionMonitorService:
         self.discord = discord_service
         self.alerts = self.alert_store.load()
         self.interval_seconds = interval_seconds or Config.MEDIA_ATTENTION_INTERVAL_SECONDS
+        self.stall_threshold = timedelta(minutes=Config.MEDIA_ATTENTION_STALL_MINUTES)
         self.running = False
         self._task = None
 
@@ -63,7 +64,7 @@ class MediaAttentionMonitorService:
         active = self._active_alert(snapshot.media_key)
         elapsed = now - tracked.last_progress_at
         needs_attention = (
-            snapshot.stage not in self.TERMINAL_STAGES and elapsed >= self.STALL_THRESHOLD
+            snapshot.stage not in self.TERMINAL_STAGES and elapsed >= self.stall_threshold
         )
         logger.info(
             "Media Attention movie=%s stage=%s progress=%s last_progress=%s minutes needs_attention=%s",

@@ -3,6 +3,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from config import Config
 from services.media_attention_alert_store import MediaAttentionAlertStore
 from services.media_attention_monitor_service import MediaAttentionMonitorService
 from services.media_attention_service import MediaAttentionService
@@ -35,9 +36,27 @@ class MediaAttentionMonitorTests(unittest.IsolatedAsyncioTestCase):
             self.radarr, self.tmdb, FakeSabnzbdClient(), FakePlexService())
         self.alert_store = MediaAttentionAlertStore(Path(self.temp.name) / "alerts.json")
         self.discord = FakeDiscord()
+        self.previous_stall_minutes = Config.MEDIA_ATTENTION_STALL_MINUTES
+        Config.MEDIA_ATTENTION_STALL_MINUTES = 20
         self.monitor = MediaAttentionMonitorService(self.attention, self.alert_store, self.discord)
 
-    def tearDown(self): self.temp.cleanup()
+    def tearDown(self):
+        Config.MEDIA_ATTENTION_STALL_MINUTES = self.previous_stall_minutes
+        self.temp.cleanup()
+
+    def test_default_stall_threshold_is_twenty_minutes(self):
+        self.assertEqual(self.monitor.stall_threshold, timedelta(minutes=20))
+
+    async def test_custom_stall_threshold_is_respected(self):
+        Config.MEDIA_ATTENTION_STALL_MINUTES = 5
+        self.monitor = MediaAttentionMonitorService(
+            self.attention, self.alert_store, self.discord
+        )
+        await self.monitor.run_cycle(self.now)
+        await self.monitor.run_cycle(self.now + timedelta(minutes=4))
+        self.assertEqual(self.discord.sent, [])
+        await self.monitor.run_cycle(self.now + timedelta(minutes=5))
+        self.assertEqual(len(self.discord.sent), 1)
 
     async def test_no_alert_before_threshold_then_create_without_duplicates(self):
         await self.monitor.run_cycle(self.now)
