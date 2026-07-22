@@ -40,8 +40,15 @@ class FakeSabnzbdClient:
 
 
 class FakePlexService:
-    def __init__(self, available=False):
+    def __init__(self, available=False, connection_error=None):
         self.available = available
+        self.connection_error = connection_error
+        self.connection_checks = 0
+
+    def test_connection(self):
+        self.connection_checks += 1
+        if self.connection_error is not None:
+            raise self.connection_error
 
     def movie_is_available(self, tmdb_id, title):
         return self.available
@@ -102,6 +109,28 @@ class MediaAttentionServiceTests(unittest.TestCase):
 
         self.assertEqual(snapshots, [])
         self.assertEqual(service.tracked_media, {})
+
+    def test_plex_outage_skips_availability_evaluation(self):
+        plex = FakePlexService(connection_error=ConnectionError("connection refused"))
+        service = MediaAttentionService(
+            state_store=self.store,
+            overseerr=FakeOverseerrService([self.movie_request()]),
+            radarr=FakeRadarrService(),
+            tmdb=FakeTmdbService(True),
+            sabnzbd=FakeSabnzbdClient(),
+            plex=plex,
+        )
+
+        with self.assertLogs("media-butler", level="WARNING") as logs:
+            snapshots = service.evaluate_requested_movies(self.now)
+
+        self.assertEqual(snapshots, [])
+        self.assertEqual(service.tracked_media, {})
+        self.assertEqual(plex.connection_checks, 1)
+        self.assertIn(
+            "Plex unavailable, skipping availability evaluation",
+            "\n".join(logs.output),
+        )
 
     def test_digitally_available_movie_creates_tracking_state(self):
         service = self.create_service(self.movie_request(), True)

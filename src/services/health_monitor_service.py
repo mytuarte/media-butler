@@ -147,9 +147,15 @@ class HealthMonitorService:
         except Exception as error:
             print(f"[Health Monitor] {service_name} check failed: {error}")
 
+            title = (
+                "Plex unavailable"
+                if monitor_source == self.PLEX_MONITOR_SOURCE
+                else f"{service_name} Offline"
+            )
+
             return [
                 HealthIssue(
-                    title=f"{service_name} Offline",
+                    title=title,
                     issue_type="service",
                     details=(
                         f"Unable to connect to {service_name}.\n"
