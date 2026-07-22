@@ -58,12 +58,14 @@ class HealthMonitorServiceTests(unittest.TestCase):
         return monitor
 
     @staticmethod
-    def issue(details="The download is paused."):
+    def issue(details="Unable to connect to SABnzbd."):
         return HealthIssue(
-            title="Example Download",
-            issue_type="download",
+            title="SABnzbd Offline",
+            issue_type="service",
             details=details,
             created_at=datetime(2026, 7, 21, 12, 0),
+            severity="critical",
+            monitor_source=HealthMonitorService.SABNZBD_MONITOR_SOURCE,
         )
 
     def process(self, monitor, issues, successful_sources):
@@ -73,10 +75,10 @@ class HealthMonitorServiceTests(unittest.TestCase):
     def test_active_alert_is_reused_after_restart(self):
         initial_monitor = self.create_monitor()
         issue = self.issue()
-        self.process(initial_monitor, [issue], {"downloads"})
+        self.process(initial_monitor, [issue], {"sabnzbd"})
 
         restarted_monitor = self.create_monitor()
-        self.process(restarted_monitor, [issue], {"downloads"})
+        self.process(restarted_monitor, [issue], {"sabnzbd"})
 
         self.assertEqual(len(self.discord.sent), 1)
         self.assertEqual(
@@ -86,13 +88,13 @@ class HealthMonitorServiceTests(unittest.TestCase):
 
     def test_alert_key_normalizes_issue_identity(self):
         issue = HealthIssue(
-            title="  Example   Download  ",
-            issue_type=" DOWNLOAD ",
-            details="The download is paused.",
+            title="  SABnzbd   Offline  ",
+            issue_type=" SERVICE ",
+            details="Unable to connect to SABnzbd.",
             created_at=datetime(2026, 7, 21, 12, 0),
         )
 
-        self.assertEqual(issue.alert_key, "download:example download")
+        self.assertEqual(issue.alert_key, "service:sabnzbd offline")
 
     def test_existing_title_key_is_migrated_without_a_duplicate_alert(self):
         issue = self.issue()
@@ -111,7 +113,7 @@ class HealthMonitorServiceTests(unittest.TestCase):
         )
         monitor = self.create_monitor()
 
-        self.process(monitor, [issue], {"downloads"})
+        self.process(monitor, [issue], {"sabnzbd"})
 
         self.assertEqual(self.discord.sent, [])
         self.assertNotIn(issue.title, monitor.alert_messages)
@@ -120,19 +122,19 @@ class HealthMonitorServiceTests(unittest.TestCase):
     def test_resolved_alert_is_removed_after_grace_cycles(self):
         monitor = self.create_monitor()
         issue = self.issue()
-        self.process(monitor, [issue], {"downloads"})
+        self.process(monitor, [issue], {"sabnzbd"})
 
-        self.process(monitor, [], {"downloads"})
+        self.process(monitor, [], {"sabnzbd"})
         self.assertEqual(self.discord.deleted, [])
 
-        self.process(monitor, [], {"downloads"})
+        self.process(monitor, [], {"sabnzbd"})
         self.assertEqual(self.discord.deleted, [101])
         self.assertEqual(monitor.alert_messages, {})
 
     def test_failed_check_does_not_resolve_existing_alert(self):
         monitor = self.create_monitor()
         issue = self.issue()
-        self.process(monitor, [issue], {"downloads"})
+        self.process(monitor, [issue], {"sabnzbd"})
 
         self.process(monitor, [], set())
 
@@ -145,12 +147,12 @@ class HealthMonitorServiceTests(unittest.TestCase):
     def test_changed_active_alert_updates_its_existing_message(self):
         monitor = self.create_monitor()
         issue = self.issue()
-        self.process(monitor, [issue], {"downloads"})
+        self.process(monitor, [issue], {"sabnzbd"})
 
         self.process(
             monitor,
-            [self.issue("The download remains paused.")],
-            {"downloads"},
+            [self.issue("SABnzbd remains unavailable.")],
+            {"sabnzbd"},
         )
 
         self.assertEqual(len(self.discord.sent), 1)
@@ -159,13 +161,13 @@ class HealthMonitorServiceTests(unittest.TestCase):
     def test_failed_alert_update_does_not_create_a_duplicate_message(self):
         monitor = self.create_monitor()
         issue = self.issue()
-        self.process(monitor, [issue], {"downloads"})
+        self.process(monitor, [issue], {"sabnzbd"})
         self.discord.update_result = None
 
         self.process(
             monitor,
-            [self.issue("The download remains paused.")],
-            {"downloads"},
+            [self.issue("SABnzbd remains unavailable.")],
+            {"sabnzbd"},
         )
 
         self.assertEqual(len(self.discord.sent), 1)
@@ -174,15 +176,142 @@ class HealthMonitorServiceTests(unittest.TestCase):
     def test_restart_preserves_pending_resolution_grace_cycle(self):
         monitor = self.create_monitor()
         issue = self.issue()
-        self.process(monitor, [issue], {"downloads"})
-        self.process(monitor, [], {"downloads"})
+        self.process(monitor, [issue], {"sabnzbd"})
+        self.process(monitor, [], {"sabnzbd"})
 
         restarted_monitor = self.create_monitor()
-        self.process(restarted_monitor, [], {"downloads"})
+        self.process(restarted_monitor, [], {"sabnzbd"})
 
         self.assertEqual(self.discord.deleted, [101])
         self.assertEqual(restarted_monitor.alert_messages, {})
         self.assertEqual(json.loads(self.state_file.read_text()), {})
+
+    def test_paused_queue_item_does_not_create_a_health_alert(self):
+        monitor = self.create_monitor()
+        monitor.sabnzbd.get_queue = lambda: {
+            "queue": {
+                "slots": [
+                    {
+                        "filename": "The.Iron.Giant.1999.2160p.BluRay.mkv",
+                        "status": "Paused",
+                        "percentage": "99",
+                    }
+                ]
+            }
+        }
+
+        issues, checked = monitor._check_sab_queue()
+
+        self.assertTrue(checked)
+        self.assertEqual(issues, [])
+
+    def test_stalled_queue_item_does_not_create_a_health_alert(self):
+        monitor = self.create_monitor()
+        monitor.sabnzbd.get_queue = lambda: {
+            "queue": {
+                "slots": [
+                    {
+                        "filename": "The.Iron.Giant.1999.2160p.BluRay.mkv",
+                        "status": "Downloading",
+                        "percentage": "99",
+                    }
+                ]
+            }
+        }
+
+        first_issues, first_checked = monitor._check_sab_queue()
+        second_issues, second_checked = monitor._check_sab_queue()
+
+        self.assertTrue(first_checked)
+        self.assertTrue(second_checked)
+        self.assertEqual(first_issues, [])
+        self.assertEqual(second_issues, [])
+
+    def test_queue_item_title_never_becomes_a_health_issue(self):
+        monitor = self.create_monitor()
+        release_title = "The.Iron.Giant.1999.2160p.BluRay.REMUX.mkv"
+        monitor.sabnzbd.get_queue = lambda: {
+            "queue": {
+                "slots": [
+                    {
+                        "filename": release_title,
+                        "status": "Failed",
+                        "percentage": "42",
+                    }
+                ]
+            }
+        }
+
+        issues, checked = monitor._check_sab_queue()
+
+        self.assertTrue(checked)
+        self.assertFalse(any(issue.title == release_title for issue in issues))
+
+    def test_sab_queue_connection_failure_creates_service_health_issue(self):
+        monitor = self.create_monitor()
+        monitor.sabnzbd.get_queue = lambda: (_ for _ in ()).throw(
+            ConnectionError("connection refused")
+        )
+
+        issues, checked = monitor._check_sab_queue()
+
+        self.assertFalse(checked)
+        self.assertEqual(issues[0].title, "SABnzbd Offline")
+        self.assertEqual(issues[0].monitor_source, monitor.SABNZBD_MONITOR_SOURCE)
+        self.assertIn("connection refused", issues[0].details)
+
+    def test_sab_queue_timeout_creates_service_health_issue(self):
+        monitor = self.create_monitor()
+        monitor.sabnzbd.get_queue = lambda: (_ for _ in ()).throw(
+            TimeoutError("request timed out")
+        )
+
+        issues, checked = monitor._check_sab_queue()
+
+        self.assertFalse(checked)
+        self.assertEqual(issues[0].title, "SABnzbd Offline")
+        self.assertIn("request timed out", issues[0].details)
+
+    def test_sab_queue_authentication_failure_creates_service_health_issue(self):
+        monitor = self.create_monitor()
+        monitor.sabnzbd.get_queue = lambda: (_ for _ in ()).throw(
+            PermissionError("invalid API key")
+        )
+
+        issues, checked = monitor._check_sab_queue()
+
+        self.assertFalse(checked)
+        self.assertEqual(issues[0].title, "SABnzbd Offline")
+        self.assertIn("invalid API key", issues[0].details)
+
+    def test_healthy_sab_queue_avoids_service_health_issues(self):
+        monitor = self.create_monitor()
+        monitor.sabnzbd.get_queue = lambda: {"queue": {"slots": []}}
+
+        issues, checked = monitor._check_sab_queue()
+
+        self.assertTrue(checked)
+        self.assertEqual(issues, [])
+
+    def test_persisted_item_level_alerts_are_retired(self):
+        self.state_file.write_text(
+            json.dumps(
+                {
+                    "download:the iron giant": {
+                        "message_id": 101,
+                        "issue_type": "download",
+                        "details": "Status: Paused",
+                        "created_at": datetime.now().isoformat(),
+                        "severity": "warning",
+                        "monitor_source": "downloads",
+                    }
+                }
+            )
+        )
+
+        monitor = self.create_monitor()
+
+        self.assertEqual(monitor.alert_messages, {})
 
     def test_storage_check_creates_warning_with_configured_path_details(self):
         monitor = self.create_monitor()
@@ -280,17 +409,25 @@ class HealthMonitorServiceTests(unittest.TestCase):
     def test_successful_service_check_marks_only_its_source_healthy(self):
         monitor = self.create_monitor()
 
-        with patch.object(monitor, "_check_downloads", return_value=([], False)), patch.object(
+        with patch.object(
+            monitor, "_check_sab_queue", return_value=([], False)
+        ), patch.object(
             monitor,
             "_check_storage",
             return_value=([], False),
-        ), patch.object(monitor.pipeline, "check_movies", return_value=[]), patch.object(
+        ), patch.object(
+            monitor.pipeline, "check_movies", return_value=[]
+        ), patch.object(
             monitor.radarr,
             "test_connection",
-        ), patch.object(monitor.sonarr, "test_connection"), patch.object(
+        ), patch.object(
+            monitor.sonarr, "test_connection"
+        ), patch.object(
             monitor.sabnzbd,
             "test_connection",
-        ), patch.object(monitor.plex, "test_connection"):
+        ), patch.object(
+            monitor.plex, "test_connection"
+        ):
             issues = monitor.check()
 
         self.assertEqual(issues, [])
@@ -330,12 +467,18 @@ class HealthMonitorServiceTests(unittest.TestCase):
         monitor = self.create_monitor()
 
         with patch.object(
-            monitor, "_check_downloads", return_value=([], False)
-        ), patch.object(monitor, "_check_storage", return_value=([], False)), patch.object(
+            monitor, "_check_sab_queue", return_value=([], False)
+        ), patch.object(
+            monitor, "_check_storage", return_value=([], False)
+        ), patch.object(
             monitor.pipeline, "check_movies", return_value=[]
-        ), patch.object(monitor.radarr, "test_connection"), patch.object(
+        ), patch.object(
+            monitor.radarr, "test_connection"
+        ), patch.object(
             monitor.sonarr, "test_connection"
-        ), patch.object(monitor.sabnzbd, "test_connection"), patch.object(
+        ), patch.object(
+            monitor.sabnzbd, "test_connection"
+        ), patch.object(
             monitor.plex,
             "test_connection",
             side_effect=[ConnectionError("connection refused"), None, None],
