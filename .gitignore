@@ -21,4 +21,7 @@ data/database.db
 data/health_alerts.json
 data/trending_movies.json
 
+# Runtime state
+data/*.json
+
 .ssh/

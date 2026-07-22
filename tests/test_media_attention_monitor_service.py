@@ -15,6 +15,7 @@ from test_media_attention_service import (FakeOverseerrService, FakePlexService,
 
 class FakeDiscord:
     def __init__(self): self.sent = []; self.updated = []; self.resolved_updates = []
+    def __init__(self): self.sent = []; self.updated = []
     async def send_media_attention_alert(self, alert, snapshot, stuck_minutes):
         self.sent.append((alert, snapshot, stuck_minutes))
         return type("Message", (), {"id": len(self.sent)})()
