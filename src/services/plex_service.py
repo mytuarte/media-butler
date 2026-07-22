@@ -27,7 +27,8 @@ class PlexService:
         del title
         inventory = self._movie_inventory_for_lookup()
         available = tmdb_id in inventory
-        logger.info(
+        log = logger.info if available else logger.debug
+        log(
             "Plex availability %s: tmdb_id=%s",
             "match found" if available else "not found",
             tmdb_id,

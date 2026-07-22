@@ -266,6 +266,32 @@ class ServiceAvailabilityClientTests(unittest.TestCase):
         self.assertIn("availability match found: tmdb_id=353491", output)
         self.assertNotIn("Plex movie lookup result:", output)
 
+    def test_plex_availability_miss_is_debug(self):
+        with patch("services.plex_service.requests.get") as get:
+            get.side_effect = self.plex_responses([])
+            with self.assertLogs("media-butler", level="DEBUG") as logs:
+                self.assertFalse(
+                    PlexService().movie_is_available(353491, "The Martian")
+                )
+
+        self.assertIn(
+            "DEBUG:media-butler:Plex availability not found", "\n".join(logs.output)
+        )
+
+    def test_plex_refresh_failure_remains_warning(self):
+        with patch(
+            "services.plex_service.requests.get",
+            side_effect=requests.ConnectionError("offline"),
+        ):
+            with self.assertLogs("media-butler", level="WARNING") as logs:
+                with self.assertRaises(requests.ConnectionError):
+                    PlexService().movie_is_available(353491, "The Martian")
+
+        self.assertIn(
+            "WARNING:media-butler:Plex movie inventory refresh failed",
+            "\n".join(logs.output),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

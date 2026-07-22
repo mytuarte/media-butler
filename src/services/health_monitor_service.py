@@ -8,6 +8,7 @@ from config import Config
 from models.health_issue import HealthIssue
 from services.pipeline_monitor_service import PipelineMonitorService
 from services.plex_service import PlexService
+from services.log_service import logger
 from services.radarr_service import RadarrService
 from services.registry import services
 from services.sabnzbd_client import SabnzbdClient
@@ -469,7 +470,7 @@ class HealthMonitorService:
         if not isinstance(slots, list):
             return [self._sab_queue_failure_issue("invalid queue slots")], False
 
-        print(f"[Health Monitor] SAB queue items: {len(slots)}")
+        logger.debug("[Health Monitor] SAB queue items: %s", len(slots))
 
         return issues, True
 

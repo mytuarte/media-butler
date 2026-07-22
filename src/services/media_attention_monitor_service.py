@@ -25,7 +25,9 @@ class MediaAttentionMonitorService:
         self.discord = discord_service
         self.alerts = self.alert_store.load()
         self._restore_stall_generations()
-        self.interval_seconds = interval_seconds or Config.MEDIA_ATTENTION_INTERVAL_SECONDS
+        self.interval_seconds = (
+            interval_seconds or Config.MEDIA_ATTENTION_INTERVAL_SECONDS
+        )
         self.stall_threshold = timedelta(minutes=Config.MEDIA_ATTENTION_STALL_MINUTES)
         self.running = False
         self._task = None
@@ -49,7 +51,9 @@ class MediaAttentionMonitorService:
                 tracked.stall_generation = generation
                 changed = True
         if changed:
-            self.attention_service.state_store.save(self.attention_service.tracked_media)
+            self.attention_service.state_store.save(
+                self.attention_service.tracked_media
+            )
 
     def start(self) -> bool:
         if self.running:
@@ -73,31 +77,42 @@ class MediaAttentionMonitorService:
             await self._evaluate_snapshot(snapshot, now)
         self.alert_store.save(self.alerts)
         active_count = sum(alert.status == "active" for alert in self.alerts.values())
-        logger.info(
+        logger.debug(
             "Media Attention cycle: movies checked=%s eligible=%s active attention=%s",
             self.attention_service.last_requests_checked,
-            len(snapshots), active_count,
+            len(snapshots),
+            active_count,
         )
         return snapshots
 
-    async def _evaluate_snapshot(self, snapshot: PipelineSnapshot, now: datetime) -> None:
+    async def _evaluate_snapshot(
+        self, snapshot: PipelineSnapshot, now: datetime
+    ) -> None:
         tracked = self.attention_service.tracked_media[snapshot.media_key]
         active = self._active_alert(snapshot.media_key)
         elapsed = now - tracked.last_progress_at
         needs_attention = (
-            snapshot.stage not in self.TERMINAL_STAGES and elapsed >= self.stall_threshold
+            snapshot.stage not in self.TERMINAL_STAGES
+            and elapsed >= self.stall_threshold
         )
-        logger.info(
+        logger.debug(
             "Media Attention movie=%s stage=%s progress=%s last_progress=%s minutes needs_attention=%s",
-            snapshot.title, snapshot.stage.name, snapshot.sab_evidence.get("percent"),
-            int(elapsed.total_seconds() // 60), needs_attention,
+            snapshot.title,
+            snapshot.stage.name,
+            snapshot.sab_evidence.get("percent"),
+            int(elapsed.total_seconds() // 60),
+            needs_attention,
         )
 
         if active and (not needs_attention or active.stage != snapshot.stage):
             active.status = "resolved"
             active.resolved_at = now
             await self._update_resolved_alert(active, snapshot)
-            logger.info("Media Attention resolved alert %s for %s", active.media_key, snapshot.title)
+            logger.info(
+                "Media Attention resolved alert %s for %s",
+                active.media_key,
+                snapshot.title,
+            )
             active = None
 
         if not needs_attention:
@@ -108,10 +123,15 @@ class MediaAttentionMonitorService:
             tracked.stall_generation += 1
             key = f"{snapshot.media_key}:stall:{tracked.stall_generation}"
             active = MediaAttentionAlert(
-                media_key=snapshot.media_key, media_type=snapshot.media_type,
-                tmdb_id=snapshot.tmdb_id, request_id=snapshot.request_id,
-                title=snapshot.title, stage=snapshot.stage, status="active",
-                created_at=now, details_fingerprint=snapshot.progress_fingerprint,
+                media_key=snapshot.media_key,
+                media_type=snapshot.media_type,
+                tmdb_id=snapshot.tmdb_id,
+                request_id=snapshot.request_id,
+                title=snapshot.title,
+                stage=snapshot.stage,
+                status="active",
+                created_at=now,
+                details_fingerprint=snapshot.progress_fingerprint,
             )
             self.alerts[key] = active
             await self._send_alert(active, snapshot, stuck_minutes)
@@ -123,8 +143,14 @@ class MediaAttentionMonitorService:
             await self._update_alert(active, snapshot, stuck_minutes)
 
     def _active_alert(self, media_key: str) -> MediaAttentionAlert | None:
-        return next((alert for alert in self.alerts.values()
-                     if alert.media_key == media_key and alert.status == "active"), None)
+        return next(
+            (
+                alert
+                for alert in self.alerts.values()
+                if alert.media_key == media_key and alert.status == "active"
+            ),
+            None,
+        )
 
     async def _update_resolved_alert(self, alert, snapshot) -> None:
         if self.discord is None or alert.message_id is None:
@@ -136,7 +162,9 @@ class MediaAttentionMonitorService:
     async def _send_alert(self, alert, snapshot, stuck_minutes: int) -> None:
         if self.discord is None:
             return
-        message = await self.discord.send_media_attention_alert(alert, snapshot, stuck_minutes)
+        message = await self.discord.send_media_attention_alert(
+            alert, snapshot, stuck_minutes
+        )
         alert.message_id = message.id
 
     async def _update_alert(self, alert, snapshot, stuck_minutes: int) -> None:

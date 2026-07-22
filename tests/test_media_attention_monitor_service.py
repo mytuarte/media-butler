@@ -9,8 +9,13 @@ from services.media_attention_alert_store import MediaAttentionAlertStore
 from services.media_attention_monitor_service import MediaAttentionMonitorService
 from services.media_attention_service import MediaAttentionService
 from services.media_attention_state_store import MediaAttentionStateStore
-from test_media_attention_service import (FakeOverseerrService, FakePlexService,
-    FakeRadarrService, FakeSabnzbdClient, FakeTmdbService)
+from test_media_attention_service import (
+    FakeOverseerrService,
+    FakePlexService,
+    FakeRadarrService,
+    FakeSabnzbdClient,
+    FakeTmdbService,
+)
 
 
 class FakeDiscord:
@@ -18,12 +23,17 @@ class FakeDiscord:
         self.sent = []
         self.updated = []
         self.resolved_updates = []
+
     async def send_media_attention_alert(self, alert, snapshot, stuck_minutes):
         self.sent.append((alert, snapshot, stuck_minutes))
         return type("Message", (), {"id": len(self.sent)})()
-    async def update_media_attention_alert(self, message_id, alert, snapshot, stuck_minutes):
+
+    async def update_media_attention_alert(
+        self, message_id, alert, snapshot, stuck_minutes
+    ):
         self.updated.append((message_id, alert, snapshot, stuck_minutes))
         return True
+
     async def update_resolved_media_attention_alert(self, message_id, alert, snapshot):
         self.resolved_updates.append((message_id, alert, snapshot))
         return True
@@ -33,19 +43,32 @@ class MediaAttentionMonitorTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.now = datetime(2026, 7, 21, 12, 0, tzinfo=timezone.utc)
-        self.request = {"id": 123, "type": "movie", "status": 2,
-                        "media": {"tmdbId": 353491, "title": "The Martian"}}
+        self.request = {
+            "id": 123,
+            "type": "movie",
+            "status": 2,
+            "media": {"tmdbId": 353491, "title": "The Martian"},
+        }
         self.overseerr = FakeOverseerrService([self.request])
         self.radarr = FakeRadarrService()
         self.tmdb = FakeTmdbService(True)
         self.attention = MediaAttentionService(
-            MediaAttentionStateStore(Path(self.temp.name) / "tracking.json"), self.overseerr,
-            self.radarr, self.tmdb, FakeSabnzbdClient(), FakePlexService())
-        self.alert_store = MediaAttentionAlertStore(Path(self.temp.name) / "alerts.json")
+            MediaAttentionStateStore(Path(self.temp.name) / "tracking.json"),
+            self.overseerr,
+            self.radarr,
+            self.tmdb,
+            FakeSabnzbdClient(),
+            FakePlexService(),
+        )
+        self.alert_store = MediaAttentionAlertStore(
+            Path(self.temp.name) / "alerts.json"
+        )
         self.discord = FakeDiscord()
         self.previous_stall_minutes = Config.MEDIA_ATTENTION_STALL_MINUTES
         Config.MEDIA_ATTENTION_STALL_MINUTES = 20
-        self.monitor = MediaAttentionMonitorService(self.attention, self.alert_store, self.discord)
+        self.monitor = MediaAttentionMonitorService(
+            self.attention, self.alert_store, self.discord
+        )
 
     def tearDown(self):
         Config.MEDIA_ATTENTION_STALL_MINUTES = self.previous_stall_minutes
@@ -67,11 +90,13 @@ class MediaAttentionMonitorTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_stalled_movie_uses_radarr_title_when_request_title_is_missing(self):
         self.request["media"].pop("title")
-        self.radarr.movies = [{
-            "id": 1,
-            "tmdbId": self.request["media"]["tmdbId"],
-            "title": "The Martian",
-        }]
+        self.radarr.movies = [
+            {
+                "id": 1,
+                "tmdbId": self.request["media"]["tmdbId"],
+                "title": "The Martian",
+            }
+        ]
 
         await self.monitor.run_cycle(self.now)
         await self.monitor.run_cycle(self.now + timedelta(minutes=20))
@@ -89,6 +114,25 @@ class MediaAttentionMonitorTests(unittest.IsolatedAsyncioTestCase):
         await self.monitor.run_cycle(self.now + timedelta(minutes=21))
         self.assertEqual(len(self.discord.sent), 1)
         self.assertEqual(len(self.discord.updated), 1)
+
+    async def test_routine_evaluation_and_cycle_logs_are_debug(self):
+        with self.assertLogs("media-butler", level="DEBUG") as logs:
+            await self.monitor.run_cycle(self.now)
+
+        output = "\n".join(logs.output)
+        self.assertIn("DEBUG:media-butler:Media Attention movie=", output)
+        self.assertIn("DEBUG:media-butler:Media Attention cycle:", output)
+
+    async def test_alert_lifecycle_logs_remain_info(self):
+        with self.assertLogs("media-butler", level="INFO") as logs:
+            await self.monitor.run_cycle(self.now)
+            await self.monitor.run_cycle(self.now + timedelta(minutes=20))
+            self.radarr.movies = [{"id": 1, "tmdbId": 353491}]
+            await self.monitor.run_cycle(self.now + timedelta(minutes=21))
+
+        output = "\n".join(logs.output)
+        self.assertIn("INFO:media-butler:Media Attention created alert", output)
+        self.assertIn("INFO:media-butler:Media Attention resolved alert", output)
 
     async def test_normal_pipeline_transitions_do_not_create_alert_history(self):
         self.radarr.movies = [{"id": 1, "tmdbId": 353491}]
@@ -148,18 +192,106 @@ class MediaAttentionMonitorTests(unittest.IsolatedAsyncioTestCase):
         )
         await restarted.run_cycle(self.now + timedelta(minutes=21))
 
-        active_alerts = [alert for alert in restarted.alerts.values()
-                         if alert.status == "active"]
+        active_alerts = [
+            alert for alert in restarted.alerts.values() if alert.status == "active"
+        ]
         self.assertEqual(len(self.discord.sent), 1)
         self.assertEqual(len(self.discord.updated), 1)
         self.assertEqual(len(active_alerts), 1)
         self.assertEqual(active_alerts[0].message_id, original_alert.message_id)
-        self.assertEqual(reloaded_attention.tracked_media[
-            "movie:tmdb:353491"
-        ].stall_generation, 1)
+        self.assertEqual(
+            reloaded_attention.tracked_media["movie:tmdb:353491"].stall_generation, 1
+        )
 
     async def test_unavailable_movie_never_enters_monitoring(self):
         self.tmdb.digitally_available = False
         snapshots = await self.monitor.run_cycle(self.now)
         self.assertEqual(snapshots, [])
         self.assertEqual(self.monitor.alerts, {})
+
+
+class MediaAttentionStateStoreTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def test_missing_empty_and_whitespace_files_load_silently(self):
+        for store_type, filename in (
+            (MediaAttentionStateStore, "tracking.json"),
+            (MediaAttentionAlertStore, "alerts.json"),
+        ):
+            path = Path(self.temp.name) / filename
+            store = store_type(path)
+            with self.assertNoLogs("media-butler", level="WARNING"):
+                self.assertEqual(store.load(), {})
+                path.write_text("")
+                self.assertEqual(store.load(), {})
+                path.write_text(" \n\t ")
+                self.assertEqual(store.load(), {})
+
+    def test_valid_state_files_load(self):
+        tracking_path = Path(self.temp.name) / "tracking.json"
+        tracking_path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "tracked_media": {
+                        "movie:tmdb:1": {
+                            "media_type": "movie",
+                            "tmdb_id": 1,
+                            "request_id": 2,
+                            "title": "Movie",
+                            "current_stage": "waiting_for_arr",
+                            "previous_stage": None,
+                            "last_progress_at": self._timestamp(),
+                            "last_progress_fingerprint": "fingerprint",
+                            "stall_generation": 0,
+                        }
+                    },
+                }
+            )
+        )
+        alert_path = Path(self.temp.name) / "alerts.json"
+        alert_path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "alerts": {
+                        "movie:tmdb:1:stall:1": {
+                            "media_type": "movie",
+                            "tmdb_id": 1,
+                            "request_id": 2,
+                            "title": "Movie",
+                            "stage": "waiting_for_arr",
+                            "status": "active",
+                            "created_at": self._timestamp(),
+                            "message_id": None,
+                            "resolved_at": None,
+                            "details_fingerprint": "fingerprint",
+                        }
+                    },
+                }
+            )
+        )
+
+        self.assertIn("movie:tmdb:1", MediaAttentionStateStore(tracking_path).load())
+        self.assertIn(
+            "movie:tmdb:1:stall:1", MediaAttentionAlertStore(alert_path).load()
+        )
+
+    def test_malformed_nonempty_state_files_warn_and_fall_back(self):
+        for store_type, filename in (
+            (MediaAttentionStateStore, "tracking.json"),
+            (MediaAttentionAlertStore, "alerts.json"),
+        ):
+            path = Path(self.temp.name) / filename
+            path.write_text("not json")
+            with self.assertLogs("media-butler", level="WARNING") as logs:
+                self.assertEqual(store_type(path).load(), {})
+            self.assertIn("Failed to load", "\n".join(logs.output))
+
+    @staticmethod
+    def _timestamp():
+        return "2026-07-21T12:00:00+00:00"
