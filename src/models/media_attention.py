@@ -88,6 +88,7 @@ class MediaAttentionAlert:
 
     def to_dict(self) -> dict:
         return {
+            "media_key": self.media_key,
             "media_type": self.media_type.value, "tmdb_id": self.tmdb_id,
             "request_id": self.request_id, "title": self.title,
             "stage": self.stage.value, "status": self.status,

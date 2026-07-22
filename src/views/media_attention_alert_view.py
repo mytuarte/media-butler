@@ -29,3 +29,17 @@ class MediaAttentionAlertView:
             details.insert(2, f"Progress: {snapshot.sab_evidence['percent']}%")
         embed.add_field(name="Details", value="\n".join(details), inline=False)
         return embed
+
+    @classmethod
+    def build_resolved(cls, alert: MediaAttentionAlert, snapshot: PipelineSnapshot):
+        embed = discord.Embed(title="✅ Media Attention Resolved", color=0x2ECC71)
+        embed.add_field(name="🎬 Movie", value=alert.title, inline=False)
+        embed.add_field(name="Status", value="Progress resumed", inline=True)
+        embed.add_field(name="Previous stage", value=alert.stage.name, inline=True)
+        details = []
+        if snapshot.sab_evidence.get("percent") is not None:
+            details.append(f"SAB progress: {snapshot.sab_evidence['percent']}%")
+        else:
+            details.append(snapshot.stage_detail)
+        embed.add_field(name="Details", value="\n".join(details), inline=False)
+        return embed

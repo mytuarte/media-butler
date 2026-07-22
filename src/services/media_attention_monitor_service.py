@@ -96,6 +96,7 @@ class MediaAttentionMonitorService:
         if active and (not needs_attention or active.stage != snapshot.stage):
             active.status = "resolved"
             active.resolved_at = now
+            await self._update_resolved_alert(active, snapshot)
             logger.info("Media Attention resolved alert %s for %s", active.media_key, snapshot.title)
             active = None
 
@@ -124,6 +125,13 @@ class MediaAttentionMonitorService:
     def _active_alert(self, media_key: str) -> MediaAttentionAlert | None:
         return next((alert for alert in self.alerts.values()
                      if alert.media_key == media_key and alert.status == "active"), None)
+
+    async def _update_resolved_alert(self, alert, snapshot) -> None:
+        if self.discord is None or alert.message_id is None:
+            return
+        await self.discord.update_resolved_media_attention_alert(
+            alert.message_id, alert, snapshot
+        )
 
     async def _send_alert(self, alert, snapshot, stuck_minutes: int) -> None:
         if self.discord is None:

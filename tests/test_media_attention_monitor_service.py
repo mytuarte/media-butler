@@ -14,12 +14,16 @@ from test_media_attention_service import (FakeOverseerrService, FakePlexService,
 
 
 class FakeDiscord:
+    def __init__(self): self.sent = []; self.updated = []; self.resolved_updates = []
     def __init__(self): self.sent = []; self.updated = []
     async def send_media_attention_alert(self, alert, snapshot, stuck_minutes):
         self.sent.append((alert, snapshot, stuck_minutes))
         return type("Message", (), {"id": len(self.sent)})()
     async def update_media_attention_alert(self, message_id, alert, snapshot, stuck_minutes):
         self.updated.append((message_id, alert, snapshot, stuck_minutes))
+        return True
+    async def update_resolved_media_attention_alert(self, message_id, alert, snapshot):
+        self.resolved_updates.append((message_id, alert, snapshot))
         return True
 
 
@@ -83,6 +87,22 @@ class MediaAttentionMonitorTests(unittest.IsolatedAsyncioTestCase):
         await self.monitor.run_cycle(self.now + timedelta(minutes=21))
         self.assertEqual(len(self.discord.sent), 1)
         self.assertEqual(len(self.discord.updated), 1)
+
+    async def test_resolved_alert_updates_existing_discord_message(self):
+        await self.monitor.run_cycle(self.now)
+        await self.monitor.run_cycle(self.now + timedelta(minutes=20))
+        original_alert = next(iter(self.monitor.alerts.values()))
+        self.assertTrue(self.alert_store.state_file.exists())
+
+        self.radarr.movies = [{"id": 1, "tmdbId": 353491}]
+        await self.monitor.run_cycle(self.now + timedelta(minutes=21))
+
+        self.assertEqual(original_alert.status, "resolved")
+        self.assertEqual(len(self.discord.sent), 1)
+        self.assertEqual(len(self.discord.resolved_updates), 1)
+        message_id, resolved_alert, _ = self.discord.resolved_updates[0]
+        self.assertEqual(message_id, original_alert.message_id)
+        self.assertEqual(resolved_alert.message_id, original_alert.message_id)
 
     async def test_stage_progress_resolves_and_later_stall_creates_new_alert(self):
         await self.monitor.run_cycle(self.now)
