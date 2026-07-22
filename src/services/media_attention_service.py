@@ -35,6 +35,7 @@ class MediaAttentionService:
         self.sabnzbd = sabnzbd or SabnzbdClient()
         self.plex = plex or PlexService()
         self.tracked_media = self.state_store.load()
+        self.last_requests_checked = 0
 
     def evaluate_requested_movies(
         self,
@@ -43,6 +44,7 @@ class MediaAttentionService:
         """Capture and evaluate all eligible movie requests for this cycle."""
         now = now or datetime.now(timezone.utc)
         requests = self.overseerr.get_requests().get("results", [])
+        self.last_requests_checked = len(requests)
         movies_by_tmdb = {
             movie.get("tmdbId"): movie
             for movie in self.radarr.get_movies()
@@ -70,25 +72,22 @@ class MediaAttentionService:
                     "slots", []
                 )
 
-            media = request["media"]
+            movie = movies_by_tmdb.get(tmdb_id)
+            title = self._movie_title(request, movie)
 
             snapshot = self.capture_movie_snapshot(
                 request,
-                movies_by_tmdb.get(tmdb_id),
+                movie,
+                title=title,
                 sab_evidence=self._movie_sab_evidence(
-                    media.get("title") or request.get("title") or "",
+                    title,
                     sab_queue,
                     sab_history or [],
                 ),
                 plex_evidence={
-                    "available": self.plex.movie_is_available(
-                        tmdb_id,
-                        media.get("title") or request.get("title") or "",
-                    )
+                    "available": self.plex.movie_is_available(tmdb_id, title)
                 },
-                history=self._movie_history_evidence(
-                    movies_by_tmdb.get(tmdb_id), radarr_history or []
-                ),
+                history=self._movie_history_evidence(movie, radarr_history or []),
             )
             self.evaluate_snapshot(snapshot, now)
             snapshots.append(snapshot)
@@ -102,6 +101,7 @@ class MediaAttentionService:
         self,
         request: dict,
         movie: dict | None,
+        title: str | None = None,
         sab_evidence: dict | None = None,
         plex_evidence: dict | None = None,
         history: list[dict] | None = None,
@@ -109,7 +109,7 @@ class MediaAttentionService:
         """Build a deterministic movie snapshot from currently available evidence."""
         media = request["media"]
         tmdb_id = media["tmdbId"]
-        title = media.get("title") or request.get("title") or "Unknown Movie"
+        title = title or self._movie_title(request, movie)
         arr_evidence = self._movie_arr_evidence(movie, history)
         sab_evidence = sab_evidence or {}
         plex_evidence = plex_evidence or {}
@@ -168,6 +168,16 @@ class MediaAttentionService:
             tracked.last_progress_fingerprint = snapshot.progress_fingerprint
 
         return progress_detected
+
+    @staticmethod
+    def _movie_title(request: dict, movie: dict | None) -> str:
+        media = request.get("media", {})
+        return (
+            media.get("title")
+            or request.get("title")
+            or (movie or {}).get("title")
+            or "Unknown Movie"
+        )
 
     @classmethod
     def movie_key(cls, tmdb_id: int) -> str:
