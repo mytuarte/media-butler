@@ -293,6 +293,20 @@ class HealthMonitorServiceTests(unittest.TestCase):
         self.assertTrue(checked)
         self.assertEqual(issues, [])
 
+    def test_sab_queue_count_is_debug(self):
+        monitor = self.create_monitor()
+        monitor.sabnzbd.get_queue = lambda: {"queue": {"slots": [{}, {}]}}
+
+        with self.assertLogs("media-butler", level="DEBUG") as logs:
+            issues, checked = monitor._check_sab_queue()
+
+        self.assertTrue(checked)
+        self.assertEqual(issues, [])
+        self.assertIn(
+            "DEBUG:media-butler:[Health Monitor] SAB queue items: 2",
+            "\n".join(logs.output),
+        )
+
     def test_persisted_item_level_alerts_are_retired(self):
         self.state_file.write_text(
             json.dumps(

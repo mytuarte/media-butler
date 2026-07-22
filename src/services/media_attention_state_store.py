@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from models.media_attention import TrackedMedia
+from services.log_service import logger
 
 
 class MediaAttentionStateStore:
@@ -11,11 +12,19 @@ class MediaAttentionStateStore:
         self.state_file = state_file
 
     def load(self) -> dict[str, TrackedMedia]:
-        if not self.state_file.exists():
+        try:
+            contents = self.state_file.read_text()
+        except FileNotFoundError:
+            return {}
+        except OSError as error:
+            logger.warning("[Media Attention] Failed to load state: %s", error)
+            return {}
+
+        if not contents.strip():
             return {}
 
         try:
-            data = json.loads(self.state_file.read_text())
+            data = json.loads(contents)
             if data.get("version") != self.VERSION:
                 raise ValueError("Unsupported Media Attention state version.")
 
@@ -23,16 +32,21 @@ class MediaAttentionStateStore:
                 media_key: TrackedMedia.from_dict(media_key, tracked_media)
                 for media_key, tracked_media in data.get("tracked_media", {}).items()
             }
-        except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as error:
-            print(f"[Media Attention] Failed to load state: {error}")
+        except (
+            OSError,
+            json.JSONDecodeError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as error:
+            logger.warning("[Media Attention] Failed to load state: %s", error)
             return {}
 
     def save(self, tracked_media: dict[str, TrackedMedia]) -> None:
         data = {
             "version": self.VERSION,
             "tracked_media": {
-                media_key: item.to_dict()
-                for media_key, item in tracked_media.items()
+                media_key: item.to_dict() for media_key, item in tracked_media.items()
             },
         }
         temporary_file = self.state_file.with_suffix(".tmp")
