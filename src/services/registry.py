@@ -15,6 +15,7 @@ class ServiceRegistry:
         self.search_channel = None
 
         self.health_monitor = None
+        self.media_attention_monitor = None
         self.trending_movies = None
         self.trending_tv = None
         self.upcoming_movie_watchlist = None

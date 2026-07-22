@@ -17,6 +17,7 @@ from services.delete_confirmation_service import DeleteConfirmationService
 from services.delete_service import DeleteService
 from services.discord_service import DiscordService
 from services.health_monitor_service import HealthMonitorService
+from services.media_attention_monitor_service import MediaAttentionMonitorService
 from services.notification_service import NotificationService
 from services.overseerr_service import OverseerrService
 from services.pipeline_monitor_service import PipelineMonitorService
@@ -50,6 +51,9 @@ services.delete = DeleteService()
 services.search_channel = SearchChannelService()
 
 services.health_monitor = HealthMonitorService()
+services.media_attention_monitor = MediaAttentionMonitorService(
+    discord_service=services.discord,
+)
 services.upcoming_movie_watchlist = UpcomingMovieWatchlistService()
 services.trending_movies = TrendingMoviesService()
 services.trending_tv = TrendingTvService()
