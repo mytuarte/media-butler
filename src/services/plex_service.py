@@ -67,6 +67,17 @@ class PlexService:
         }
         logger.info("Plex movie lookup library sections searched: %s", sections)
         logger.info("Plex movie lookup result count: %s", len(metadata))
+        if not metadata:
+            response_details = {
+                key: value
+                for key, value in media_container.items()
+                if key != "Metadata"
+            }
+            logger.info(
+                "Plex movie lookup returned zero results: response_details=%s",
+                response_details,
+            )
+
         expected_guid = f"tmdb://{tmdb_id}"
         if not metadata:
             response_details = {
@@ -112,46 +123,3 @@ class PlexService:
 
         logger.info("Plex unavailable: no result contained TMDb GUID %s", expected_guid)
         return False
-
-    def _log_title_fallback_diagnostics(self, endpoint: str, title: str) -> None:
-        """Log title-search candidates after an empty TMDb GUID lookup.
-
-        This diagnostic lookup never contributes to the availability result.
-        """
-        query = {"type": 1, "title": title, "includeGuids": 1}
-        logger.info(
-            "Plex title fallback diagnostic request: endpoint=%s query=%s",
-            endpoint,
-            query,
-        )
-        try:
-            response = requests.get(
-                endpoint,
-                params={"X-Plex-Token": Config.PLEX_TOKEN, **query},
-                headers={"Accept": "application/json"},
-                timeout=10,
-            )
-            logger.info(
-                "Plex title fallback diagnostic response: endpoint=%s http_status=%s",
-                endpoint,
-                response.status_code,
-            )
-            response.raise_for_status()
-        except requests.RequestException as error:
-            logger.warning("Plex title fallback diagnostic failed: %s", error)
-            return
-
-        metadata = response.json().get("MediaContainer", {}).get("Metadata", [])
-        logger.info("Plex title fallback diagnostic result count: %s", len(metadata))
-        for item in metadata:
-            guids = item.get("Guid", [])
-            external_ids = [guid.get("id") for guid in guids]
-            logger.info(
-                "Plex title fallback diagnostic result: title=%r year=%r ratingKey=%r "
-                "guids=%s external_ids=%s",
-                item.get("title"),
-                item.get("year"),
-                item.get("ratingKey"),
-                guids,
-                external_ids,
-            )
