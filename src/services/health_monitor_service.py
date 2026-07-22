@@ -1,7 +1,7 @@
 import asyncio
 import json
 import shutil
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 from config import Config
@@ -16,10 +16,8 @@ from utils.formatting import format_size
 
 
 class HealthMonitorService:
-    STALL_THRESHOLD_MINUTES = 5
     RESOLUTION_GRACE_CYCLES = 2
 
-    DOWNLOADS_MONITOR_SOURCE = "downloads"
     PIPELINE_MONITOR_SOURCE = "pipeline"
     STORAGE_MONITOR_SOURCE = "storage"
     RADARR_MONITOR_SOURCE = "radarr"
@@ -39,11 +37,6 @@ class HealthMonitorService:
         self.forced_issues: list[HealthIssue] = []
 
         self.successful_monitor_sources: set[str] = set()
-
-        self.download_progress: dict[
-            str,
-            dict,
-        ] = {}
 
         self.alert_messages: dict[
             str,
@@ -82,12 +75,12 @@ class HealthMonitorService:
 
         self.successful_monitor_sources = set()
 
-        download_issues, downloads_checked = self._check_downloads()
-        issues.extend(download_issues)
+        sab_queue_issues, sab_queue_checked = self._check_sab_queue()
+        issues.extend(sab_queue_issues)
 
-        if downloads_checked:
+        if sab_queue_checked:
             self.successful_monitor_sources.add(
-                self.DOWNLOADS_MONITOR_SOURCE,
+                self.SABNZBD_MONITOR_SOURCE,
             )
 
         storage_issues, storage_checked = self._check_storage()
@@ -158,8 +151,7 @@ class HealthMonitorService:
                     title=title,
                     issue_type="service",
                     details=(
-                        f"Unable to connect to {service_name}.\n"
-                        f"Error: {error}"
+                        f"Unable to connect to {service_name}.\n" f"Error: {error}"
                     ),
                     created_at=datetime.now(),
                     severity="critical",
@@ -173,10 +165,7 @@ class HealthMonitorService:
         self,
         issues: list[HealthIssue],
     ):
-        current_issues = {
-            issue.alert_key: issue
-            for issue in issues
-        }
+        current_issues = {issue.alert_key: issue for issue in issues}
 
         for alert_key, issue in current_issues.items():
             alert = self._get_alert(alert_key, issue)
@@ -311,7 +300,7 @@ class HealthMonitorService:
         if issue.issue_type == "storage":
             return self.STORAGE_MONITOR_SOURCE
 
-        return self.DOWNLOADS_MONITOR_SOURCE
+        return self.SABNZBD_MONITOR_SOURCE
 
     def _update_alert(
         self,
@@ -360,6 +349,9 @@ class HealthMonitorService:
                             value.get("issue_type", "unknown"),
                         ),
                     )
+                    if self._is_obsolete_download_alert(value):
+                        continue
+
                     migrated[title] = value
 
             return migrated
@@ -368,6 +360,12 @@ class HealthMonitorService:
             print(f"[Health Monitor] Failed to load alert state: {error}")
 
             return {}
+
+    @staticmethod
+    def _is_obsolete_download_alert(alert: dict) -> bool:
+        return alert.get("monitor_source") == "downloads" or alert.get(
+            "issue_type"
+        ) in {"download", "stalled_download"}
 
     def _monitor_source_from_issue_type(
         self,
@@ -382,13 +380,15 @@ class HealthMonitorService:
         if issue_type == "storage":
             return self.STORAGE_MONITOR_SOURCE
 
-        return self.DOWNLOADS_MONITOR_SOURCE
+        return self.SABNZBD_MONITOR_SOURCE
 
     def _check_storage(self) -> tuple[list[HealthIssue], bool]:
         media_root = Config.MEDIA_ROOT
 
         if not media_root:
-            print("[Health Monitor] Storage check failed: MEDIA_ROOT is not configured.")
+            print(
+                "[Health Monitor] Storage check failed: MEDIA_ROOT is not configured."
+            )
             return [], False
 
         monitored_path = Path(media_root)
@@ -452,130 +452,33 @@ class HealthMonitorService:
         except Exception as error:
             print(f"[Health Monitor] Failed to save alert state: {error}")
 
-    def _check_downloads(self) -> tuple[list[HealthIssue], bool]:
+    def _check_sab_queue(self) -> tuple[list[HealthIssue], bool]:
         issues: list[HealthIssue] = []
 
         try:
             queue = self.sabnzbd.get_queue()
 
         except Exception as error:
-            now = datetime.now()
+            return [self._sab_queue_failure_issue(error)], False
 
-            issues.append(
-                HealthIssue(
-                    title="SABnzbd Offline",
-                    issue_type="service",
-                    details=("Unable to connect to SABnzbd.\n" f"Error: {error}"),
-                    created_at=now,
-                    severity="critical",
-                )
-            )
+        try:
+            slots = queue["queue"]["slots"]
+        except (KeyError, TypeError) as error:
+            return [self._sab_queue_failure_issue(error)], False
 
-            return issues, False
-
-        slots = queue.get(
-            "queue",
-            {},
-        ).get(
-            "slots",
-            [],
-        )
+        if not isinstance(slots, list):
+            return [self._sab_queue_failure_issue("invalid queue slots")], False
 
         print(f"[Health Monitor] SAB queue items: {len(slots)}")
 
-        now = datetime.now()
-
-        for slot in slots:
-            name = slot.get(
-                "filename",
-                "Unknown Download",
-            )
-
-            status = slot.get(
-                "status",
-                "Unknown",
-            )
-
-            progress = int(
-                slot.get(
-                    "percentage",
-                    0,
-                )
-            )
-
-            self._track_progress(
-                name,
-                progress,
-                now,
-            )
-
-            if status.lower() in {
-                "paused",
-                "failed",
-                "stopped",
-            }:
-                issues.append(
-                    HealthIssue(
-                        title=name,
-                        issue_type="download",
-                        details=(f"Status: {status}\n" f"Progress: {progress}%"),
-                        created_at=now,
-                        severity="warning",
-                    )
-                )
-
-            elif self._is_stalled(
-                name,
-                now,
-            ):
-                issues.append(
-                    HealthIssue(
-                        title=name,
-                        issue_type="stalled_download",
-                        details=(
-                            "No progress detected for "
-                            f"{self.STALL_THRESHOLD_MINUTES} minutes.\n"
-                            f"Progress: {progress}%"
-                        ),
-                        created_at=now,
-                        severity="warning",
-                    )
-                )
-
         return issues, True
 
-    def _track_progress(
-        self,
-        name: str,
-        progress: int,
-        now: datetime,
-    ):
-        previous = self.download_progress.get(name)
-
-        if previous is None:
-            self.download_progress[name] = {
-                "progress": progress,
-                "last_changed": now,
-            }
-
-            return
-
-        if previous["progress"] != progress:
-            self.download_progress[name] = {
-                "progress": progress,
-                "last_changed": now,
-            }
-
-    def _is_stalled(
-        self,
-        name: str,
-        now: datetime,
-    ) -> bool:
-        progress = self.download_progress.get(name)
-
-        if progress is None:
-            return False
-
-        elapsed = now - progress["last_changed"]
-
-        return elapsed >= timedelta(minutes=self.STALL_THRESHOLD_MINUTES)
+    def _sab_queue_failure_issue(self, error: Exception | str) -> HealthIssue:
+        return HealthIssue(
+            title="SABnzbd Offline",
+            issue_type="service",
+            details=("Unable to retrieve the SABnzbd queue.\n" f"Error: {error}"),
+            created_at=datetime.now(),
+            severity="critical",
+            monitor_source=self.SABNZBD_MONITOR_SOURCE,
+        )
