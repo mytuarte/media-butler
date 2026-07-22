@@ -12,6 +12,7 @@ from services.overseerr_service import OverseerrService
 from services.plex_service import PlexService
 from services.radarr_service import RadarrService
 from services.sabnzbd_client import SabnzbdClient
+from services.log_service import logger
 
 
 class MediaAttentionService:
@@ -43,6 +44,16 @@ class MediaAttentionService:
     ) -> list[PipelineSnapshot]:
         """Capture and evaluate all eligible movie requests for this cycle."""
         now = now or datetime.now(timezone.utc)
+
+        try:
+            self.plex.test_connection()
+        except Exception as error:
+            logger.warning(
+                "Plex unavailable, skipping availability evaluation: %s", error
+            )
+            self.last_requests_checked = 0
+            return []
+
         requests = self.overseerr.get_requests().get("results", [])
         self.last_requests_checked = len(requests)
         movies_by_tmdb = {

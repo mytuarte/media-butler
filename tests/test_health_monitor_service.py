@@ -272,7 +272,7 @@ class HealthMonitorServiceTests(unittest.TestCase):
 
         self.assertFalse(checked)
         self.assertEqual(len(issues), 1)
-        self.assertEqual(issues[0].title, "Plex Offline")
+        self.assertEqual(issues[0].title, "Plex unavailable")
         self.assertEqual(issues[0].issue_type, "service")
         self.assertEqual(issues[0].severity, "critical")
         self.assertEqual(issues[0].monitor_source, monitor.PLEX_MONITOR_SOURCE)
@@ -308,7 +308,7 @@ class HealthMonitorServiceTests(unittest.TestCase):
     def test_service_alert_resolves_only_after_successful_checks(self):
         monitor = self.create_monitor()
         issue = HealthIssue(
-            title="Plex Offline",
+            title="Plex unavailable",
             issue_type="service",
             details="Unable to connect to Plex.\nError: Unauthorized",
             created_at=datetime(2026, 7, 21, 12, 0),
@@ -324,6 +324,37 @@ class HealthMonitorServiceTests(unittest.TestCase):
         self.assertEqual(self.discord.deleted, [])
 
         self.process(monitor, [], {monitor.PLEX_MONITOR_SOURCE})
+        self.assertEqual(self.discord.deleted, [101])
+
+    def test_plex_outage_creates_one_alert_and_recovery_resolves_it(self):
+        monitor = self.create_monitor()
+
+        with patch.object(
+            monitor, "_check_downloads", return_value=([], False)
+        ), patch.object(monitor, "_check_storage", return_value=([], False)), patch.object(
+            monitor.pipeline, "check_movies", return_value=[]
+        ), patch.object(monitor.radarr, "test_connection"), patch.object(
+            monitor.sonarr, "test_connection"
+        ), patch.object(monitor.sabnzbd, "test_connection"), patch.object(
+            monitor.plex,
+            "test_connection",
+            side_effect=[ConnectionError("connection refused"), None, None],
+        ):
+            issues = monitor.check()
+            self.process(monitor, issues, monitor.successful_monitor_sources)
+
+            self.assertEqual(len(self.discord.sent), 1)
+            self.assertEqual(self.discord.sent[0].title, "Plex unavailable")
+            self.assertIn("connection refused", self.discord.sent[0].details)
+
+            issues = monitor.check()
+            self.process(monitor, issues, monitor.successful_monitor_sources)
+            self.assertEqual(len(self.discord.sent), 1)
+            self.assertEqual(self.discord.deleted, [])
+
+            issues = monitor.check()
+            self.process(monitor, issues, monitor.successful_monitor_sources)
+
         self.assertEqual(self.discord.deleted, [101])
 
 
