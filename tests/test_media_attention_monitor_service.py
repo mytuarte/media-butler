@@ -58,6 +58,21 @@ class MediaAttentionMonitorTests(unittest.IsolatedAsyncioTestCase):
         await self.monitor.run_cycle(self.now + timedelta(minutes=5))
         self.assertEqual(len(self.discord.sent), 1)
 
+    async def test_stalled_movie_uses_radarr_title_when_request_title_is_missing(self):
+        self.request["media"].pop("title")
+        self.radarr.movies = [{
+            "id": 1,
+            "tmdbId": self.request["media"]["tmdbId"],
+            "title": "The Martian",
+        }]
+
+        await self.monitor.run_cycle(self.now)
+        await self.monitor.run_cycle(self.now + timedelta(minutes=20))
+
+        alert, snapshot, _ = self.discord.sent[0]
+        self.assertEqual(snapshot.title, "The Martian")
+        self.assertEqual(alert.title, "The Martian")
+
     async def test_no_alert_before_threshold_then_create_without_duplicates(self):
         await self.monitor.run_cycle(self.now)
         await self.monitor.run_cycle(self.now + timedelta(minutes=19))

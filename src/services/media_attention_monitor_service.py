@@ -11,7 +11,6 @@ from services.media_attention_service import MediaAttentionService
 class MediaAttentionMonitorService:
     """Periodically identifies stalled, digitally available requested movies."""
 
-    STALL_THRESHOLD = timedelta(minutes=20)
     TERMINAL_STAGES = {PipelineStage.PLEX_AVAILABLE}
 
     def __init__(
