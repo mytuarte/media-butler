@@ -1,6 +1,7 @@
 import requests
 
 from config import Config
+from services.log_service import logger
 
 
 class PlexService:
@@ -21,6 +22,7 @@ class PlexService:
         The TMDb guid is authoritative so a same-title movie cannot be treated
         as available by mistake.
         """
+        logger.info("Plex availability check: tmdb_id=%s", tmdb_id)
         response = requests.get(
             f"{Config.PLEX_URL}/library/all",
             params={
@@ -35,9 +37,18 @@ class PlexService:
         response.raise_for_status()
 
         metadata = response.json().get("MediaContainer", {}).get("Metadata", [])
+        logger.info("Plex search results for tmdb_id=%s: %s", tmdb_id, metadata)
+        expected_guid = f"tmdb://{tmdb_id}"
         for item in metadata:
-            guids = item.get("Guid", [])
-            if any(guid.get("id") == f"tmdb://{tmdb_id}" for guid in guids):
+            external_ids = [guid.get("id") for guid in item.get("Guid", [])]
+            logger.info(
+                "Plex external IDs for tmdb_id=%s: %s", tmdb_id, external_ids
+            )
+            if expected_guid in external_ids:
+                logger.info("Plex availability match found: tmdb_id=%s", tmdb_id)
                 return True
 
+        logger.info(
+            "Plex unavailable: no result contained TMDb GUID %s", expected_guid
+        )
         return False

@@ -88,6 +88,17 @@ class MediaAttentionMonitorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.discord.sent), 1)
         self.assertEqual(len(self.discord.updated), 1)
 
+    async def test_normal_pipeline_transitions_do_not_create_alert_history(self):
+        self.radarr.movies = [{"id": 1, "tmdbId": 353491}]
+        await self.monitor.run_cycle(self.now)
+
+        self.radarr.movies = [{"id": 1, "tmdbId": 353491, "hasFile": True}]
+        await self.monitor.run_cycle(self.now + timedelta(minutes=1))
+
+        self.assertEqual(self.discord.sent, [])
+        self.assertEqual(self.discord.resolved_updates, [])
+        self.assertEqual(self.monitor.alerts, {})
+
     async def test_resolved_alert_updates_existing_discord_message(self):
         await self.monitor.run_cycle(self.now)
         await self.monitor.run_cycle(self.now + timedelta(minutes=20))
