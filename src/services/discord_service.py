@@ -9,6 +9,7 @@ from services.command_service import CommandService
 from services.log_service import logger
 from services.registry import services
 from views.health_alert_view import HealthAlertView
+from views.media_attention_alert_view import MediaAttentionAlertView
 
 
 class DiscordService:
@@ -36,6 +37,9 @@ class DiscordService:
                 services.health_monitor.start()
 
                 logger.info("Health monitor started.")
+
+            if services.media_attention_monitor and services.media_attention_monitor.start():
+                logger.info("Media Attention monitor started.")
 
             if services.trending_movies:
                 if services.trending_movies.start():
@@ -144,6 +148,40 @@ class DiscordService:
         )
 
         return message
+
+    async def send_media_attention_alert(self, alert, snapshot, stuck_minutes: int) -> discord.Message:
+        channel = self.client.get_channel(Config.DISCORD_MEDIA_ATTENTION_CHANNEL_ID)
+        if channel is None:
+            raise RuntimeError("Media attention channel not found.")
+        return await channel.send(embed=MediaAttentionAlertView.build(alert, snapshot, stuck_minutes))
+
+    async def update_media_attention_alert(self, message_id: int, alert, snapshot, stuck_minutes: int) -> bool | None:
+        channel = self.client.get_channel(Config.DISCORD_MEDIA_ATTENTION_CHANNEL_ID)
+        if channel is None:
+            raise RuntimeError("Media attention channel not found.")
+        try:
+            message = await channel.fetch_message(message_id)
+            await message.edit(embed=MediaAttentionAlertView.build(alert, snapshot, stuck_minutes))
+            return True
+        except discord.NotFound:
+            return False
+        except discord.HTTPException as error:
+            logger.warning("Unable to update media attention alert %s: %s", message_id, error)
+            return None
+
+    async def update_resolved_media_attention_alert(self, message_id: int, alert, snapshot) -> bool | None:
+        channel = self.client.get_channel(Config.DISCORD_MEDIA_ATTENTION_CHANNEL_ID)
+        if channel is None:
+            raise RuntimeError("Media attention channel not found.")
+        try:
+            message = await channel.fetch_message(message_id)
+            await message.edit(embed=MediaAttentionAlertView.build_resolved(alert, snapshot))
+            return True
+        except discord.NotFound:
+            return False
+        except discord.HTTPException as error:
+            logger.warning("Unable to resolve media attention alert %s: %s", message_id, error)
+            return None
 
     async def send_trending_movies(
         self,
