@@ -7,8 +7,6 @@ class ServiceRegistry:
         self.sonarr = None
         self.sonarr_search = None
 
-        self.pipeline_monitor = None
-
         self.delete_confirmation = None
         self.delete = None
 

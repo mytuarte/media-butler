@@ -107,7 +107,6 @@ services/
 radarr_service.py
 sonarr_service.py
 overseerr_service.py
-pipeline_monitor_service.py
 health_monitor_service.py
 
 
@@ -230,9 +229,11 @@ Health Monitoring System
 
 The health monitoring system monitors:
 
-SABnzbd
-Pipeline issues
-Future services
+Infrastructure and service health, including SABnzbd queue access and storage
+Radarr, Sonarr, SABnzbd, and Plex availability
+
+Media Attention owns individual movie acquisition-pipeline progress and stall
+monitoring.
 
 Health alerts should:
 

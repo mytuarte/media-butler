@@ -21,8 +21,6 @@ def initialize(
     sonarr_search_service,
     sonarr_service,
     radarr_service,
-    pipeline_monitor_service,
-    health_monitor_service,
 ):
     @debug_routes.get("/debug/sonarr")
     def debug_sonarr():
@@ -108,87 +106,6 @@ def initialize(
                 "message": "Request printed to console.",
             }
         )
-
-    @debug_routes.get("/debug/test-pipeline")
-    def test_pipeline():
-        issues = pipeline_monitor_service.check_movies()
-
-        return jsonify(
-            {
-                "count": len(issues),
-                "issues": [
-                    {
-                        "title": issue.title,
-                        "type": issue.issue_type,
-                        "details": issue.details,
-                    }
-                    for issue in issues
-                ],
-            }
-        )
-
-    @debug_routes.get("/debug/test-pipeline-alert")
-    def test_pipeline_alert():
-        issue = HealthIssue(
-            title="Pipeline Stalled: Test Movie",
-            issue_type="pipeline",
-            details=(
-                "Movie appears stuck in acquisition pipeline.\n\n"
-                "Movie: Test Movie\n"
-                "TMDb ID: 999999\n\n"
-                "Requested: 2026-07-01 12:00\n"
-                "Waiting: 20 days\n\n"
-                "Status:\n"
-                "- Released: Yes\n"
-                "- Digital Available: Yes\n"
-                "- Radarr Monitored: Yes\n"
-                "- File Exists: No\n"
-                "- Download Queue: Not Found\n\n"
-                "Radarr History:\n"
-                "No recent activity found.\n\n"
-                "Possible causes:\n"
-                "- Radarr has not found a release\n"
-                "- Indexers returned no results\n"
-                "- Download failed before entering queue"
-            ),
-            created_at=datetime.now(),
-            severity="warning",
-        )
-
-        future = asyncio.run_coroutine_threadsafe(
-            discord_service.send_health_alert(issue),
-            discord_service.client.loop,
-        )
-
-        future.result(timeout=10)
-
-        return "Pipeline alert test sent."
-
-    @debug_routes.get("/debug/test-health-monitor-pipeline")
-    def test_health_monitor_pipeline():
-        issue = HealthIssue(
-            title="Pipeline Stalled: Monitor Test Movie",
-            issue_type="pipeline",
-            details=(
-                "Movie appears stuck in acquisition pipeline.\n\n"
-                "Movie: Monitor Test Movie\n"
-                "TMDb ID: 888888\n\n"
-                "Requested: 2026-07-01 12:00\n"
-                "Waiting: 20 days\n\n"
-                "Status:\n"
-                "- Released: Yes\n"
-                "- Digital Available: Yes\n"
-                "- Radarr Monitored: Yes\n"
-                "- File Exists: No\n"
-                "- Download Queue: Not Found"
-            ),
-            created_at=datetime.now(),
-            severity="warning",
-        )
-
-        health_monitor_service.add_test_issue(issue)
-
-        return "Health monitor test issue added."
 
     @debug_routes.get("/debug/test")
     def test():

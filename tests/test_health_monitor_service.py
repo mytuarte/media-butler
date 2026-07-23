@@ -327,6 +327,38 @@ class HealthMonitorServiceTests(unittest.TestCase):
 
         self.assertEqual(monitor.alert_messages, {})
 
+    def test_persisted_pipeline_alert_is_retired_after_grace_cycles(self):
+        self.state_file.write_text(
+            json.dumps(
+                {
+                    "pipeline:the iron giant": {
+                        "message_id": 101,
+                        "issue_type": "pipeline",
+                        "details": "Movie appears stalled.",
+                        "created_at": datetime.now().isoformat(),
+                        "severity": "warning",
+                        "monitor_source": "pipeline",
+                    }
+                }
+            )
+        )
+
+        monitor = self.create_monitor()
+
+        self.assertEqual(
+            monitor.alert_messages["pipeline:the iron giant"]["monitor_source"],
+            monitor.RETIRED_PIPELINE_MONITOR_SOURCE,
+        )
+
+        self.process(monitor, [], set())
+        self.assertEqual(self.discord.deleted, [])
+
+        self.process(monitor, [], set())
+
+        self.assertEqual(self.discord.deleted, [101])
+        self.assertEqual(monitor.alert_messages, {})
+        self.assertEqual(json.loads(self.state_file.read_text()), {})
+
     def test_storage_check_creates_warning_with_configured_path_details(self):
         monitor = self.create_monitor()
         Config.MEDIA_ROOT = self.temporary_directory.name
@@ -420,7 +452,7 @@ class HealthMonitorServiceTests(unittest.TestCase):
         self.assertEqual(issues[0].severity, "critical")
         self.assertEqual(issues[0].monitor_source, monitor.PLEX_MONITOR_SOURCE)
 
-    def test_successful_service_check_marks_only_its_source_healthy(self):
+    def test_successful_service_check_marks_only_its_sources_healthy(self):
         monitor = self.create_monitor()
 
         with patch.object(
@@ -429,8 +461,6 @@ class HealthMonitorServiceTests(unittest.TestCase):
             monitor,
             "_check_storage",
             return_value=([], False),
-        ), patch.object(
-            monitor.pipeline, "check_movies", return_value=[]
         ), patch.object(
             monitor.radarr,
             "test_connection",
@@ -445,10 +475,11 @@ class HealthMonitorServiceTests(unittest.TestCase):
             issues = monitor.check()
 
         self.assertEqual(issues, [])
+        self.assertFalse(hasattr(monitor, "pipeline"))
+        self.assertFalse(any(issue.issue_type == "pipeline" for issue in issues))
         self.assertSetEqual(
             monitor.successful_monitor_sources,
             {
-                monitor.PIPELINE_MONITOR_SOURCE,
                 monitor.RADARR_MONITOR_SOURCE,
                 monitor.SONARR_MONITOR_SOURCE,
                 monitor.SABNZBD_MONITOR_SOURCE,
@@ -484,8 +515,6 @@ class HealthMonitorServiceTests(unittest.TestCase):
             monitor, "_check_sab_queue", return_value=([], False)
         ), patch.object(
             monitor, "_check_storage", return_value=([], False)
-        ), patch.object(
-            monitor.pipeline, "check_movies", return_value=[]
         ), patch.object(
             monitor.radarr, "test_connection"
         ), patch.object(

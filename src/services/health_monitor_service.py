@@ -6,7 +6,6 @@ from pathlib import Path
 
 from config import Config
 from models.health_issue import HealthIssue
-from services.pipeline_monitor_service import PipelineMonitorService
 from services.plex_service import PlexService
 from services.log_service import logger
 from services.radarr_service import RadarrService
@@ -19,7 +18,7 @@ from utils.formatting import format_size
 class HealthMonitorService:
     RESOLUTION_GRACE_CYCLES = 2
 
-    PIPELINE_MONITOR_SOURCE = "pipeline"
+    RETIRED_PIPELINE_MONITOR_SOURCE = "retired_pipeline"
     STORAGE_MONITOR_SOURCE = "storage"
     RADARR_MONITOR_SOURCE = "radarr"
     SONARR_MONITOR_SOURCE = "sonarr"
@@ -33,7 +32,6 @@ class HealthMonitorService:
         self.radarr = RadarrService()
         self.sonarr = SonarrService()
         self.plex = PlexService()
-        self.pipeline = PipelineMonitorService()
 
         self.forced_issues: list[HealthIssue] = []
 
@@ -107,15 +105,6 @@ class HealthMonitorService:
 
             if service_checked:
                 self.successful_monitor_sources.add(monitor_source)
-
-        try:
-            issues.extend(self.pipeline.check_movies())
-            self.successful_monitor_sources.add(
-                self.PIPELINE_MONITOR_SOURCE,
-            )
-
-        except Exception as error:
-            print(f"[Health Monitor] Pipeline check failed: {error}")
 
         return issues
 
@@ -199,7 +188,7 @@ class HealthMonitorService:
             if alert_key in current_issues:
                 continue
 
-            if alert["monitor_source"] not in self.successful_monitor_sources:
+            if not self._should_resolve_alert(alert):
                 continue
 
             alert["missing_cycles"] += 1
@@ -295,9 +284,6 @@ class HealthMonitorService:
         if issue.monitor_source is not None:
             return issue.monitor_source
 
-        if issue.issue_type == "pipeline":
-            return self.PIPELINE_MONITOR_SOURCE
-
         if issue.issue_type == "storage":
             return self.STORAGE_MONITOR_SOURCE
 
@@ -353,6 +339,11 @@ class HealthMonitorService:
                     if self._is_obsolete_download_alert(value):
                         continue
 
+                    if self._is_legacy_pipeline_alert(value):
+                        value["monitor_source"] = (
+                            self.RETIRED_PIPELINE_MONITOR_SOURCE
+                        )
+
                     migrated[title] = value
 
             return migrated
@@ -368,6 +359,18 @@ class HealthMonitorService:
             "issue_type"
         ) in {"download", "stalled_download"}
 
+    @staticmethod
+    def _is_legacy_pipeline_alert(alert: dict) -> bool:
+        return alert.get("monitor_source") == "pipeline" or alert.get(
+            "issue_type"
+        ) == "pipeline"
+
+    def _should_resolve_alert(self, alert: dict) -> bool:
+        return (
+            alert["monitor_source"] == self.RETIRED_PIPELINE_MONITOR_SOURCE
+            or alert["monitor_source"] in self.successful_monitor_sources
+        )
+
     def _monitor_source_from_issue_type(
         self,
         issue_type: str,
@@ -376,7 +379,7 @@ class HealthMonitorService:
             return "unknown"
 
         if issue_type == "pipeline":
-            return self.PIPELINE_MONITOR_SOURCE
+            return self.RETIRED_PIPELINE_MONITOR_SOURCE
 
         if issue_type == "storage":
             return self.STORAGE_MONITOR_SOURCE
