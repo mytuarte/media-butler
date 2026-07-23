@@ -20,7 +20,7 @@ class OverseerrService:
 
     def test_connection(self):
         return self.http.get(
-            f"{Config.OVERSEERR_URL}/api/v1/status",
+            f"{Config.OVERSEERR_URL}/api/v1/auth/me",
             headers=self.headers,
         )
 

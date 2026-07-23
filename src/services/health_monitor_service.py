@@ -8,6 +8,7 @@ from config import Config
 from models.health_issue import HealthIssue
 from services.plex_service import PlexService
 from services.log_service import logger
+from services.overseerr_service import OverseerrService
 from services.radarr_service import RadarrService
 from services.registry import services
 from services.sabnzbd_client import SabnzbdClient
@@ -24,6 +25,7 @@ class HealthMonitorService:
     SONARR_MONITOR_SOURCE = "sonarr"
     SABNZBD_MONITOR_SOURCE = "sabnzbd"
     PLEX_MONITOR_SOURCE = "plex"
+    OVERSEERR_MONITOR_SOURCE = "overseerr"
 
     HEALTH_STATE_FILE = Path("data/health_alerts.json")
 
@@ -32,6 +34,7 @@ class HealthMonitorService:
         self.radarr = RadarrService()
         self.sonarr = SonarrService()
         self.plex = PlexService()
+        self.overseerr = OverseerrService()
 
         self.forced_issues: list[HealthIssue] = []
 
@@ -47,6 +50,10 @@ class HealthMonitorService:
 
     def start(self):
         if self.running:
+            return
+
+        if Config.HEALTH_MONITOR_INTERVAL_SECONDS <= 0:
+            logger.error("HEALTH_MONITOR_INTERVAL_SECONDS must be greater than zero.")
             return
 
         self.running = True
@@ -65,7 +72,7 @@ class HealthMonitorService:
             except Exception as error:
                 print(f"[Health Monitor] Error: {error}")
 
-            await asyncio.sleep(60)
+            await asyncio.sleep(Config.HEALTH_MONITOR_INTERVAL_SECONDS)
 
     def check(self) -> list[HealthIssue]:
         issues: list[HealthIssue] = []
@@ -95,6 +102,11 @@ class HealthMonitorService:
             ("Sonarr", self.SONARR_MONITOR_SOURCE, self.sonarr.test_connection),
             ("SABnzbd", self.SABNZBD_MONITOR_SOURCE, self.sabnzbd.test_connection),
             ("Plex", self.PLEX_MONITOR_SOURCE, self.plex.test_connection),
+            (
+                "Overseerr",
+                self.OVERSEERR_MONITOR_SOURCE,
+                self.overseerr.test_connection,
+            ),
         ):
             service_issues, service_checked = self._check_service_availability(
                 service_name,
@@ -130,11 +142,10 @@ class HealthMonitorService:
         except Exception as error:
             print(f"[Health Monitor] {service_name} check failed: {error}")
 
-            title = (
-                "Plex unavailable"
-                if monitor_source == self.PLEX_MONITOR_SOURCE
-                else f"{service_name} Offline"
-            )
+            title = {
+                self.PLEX_MONITOR_SOURCE: "Plex unavailable",
+                self.OVERSEERR_MONITOR_SOURCE: "Overseerr unavailable",
+            }.get(monitor_source, f"{service_name} Offline")
 
             return [
                 HealthIssue(
