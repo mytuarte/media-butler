@@ -29,4 +29,5 @@ class OverseerrRequestFactory:
             requester_discord_id=discord_id,
             requested_date=request.get("createdAt"),
             raw=request,
+            media_id=media.get("id"),
         )

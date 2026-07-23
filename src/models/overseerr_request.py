@@ -14,3 +14,4 @@ class OverseerrRequest:
     requested_date: str | None
 
     raw: dict
+    media_id: int | None = None
