@@ -20,7 +20,6 @@ from services.health_monitor_service import HealthMonitorService
 from services.media_attention_monitor_service import MediaAttentionMonitorService
 from services.notification_service import NotificationService
 from services.overseerr_service import OverseerrService
-from services.pipeline_monitor_service import PipelineMonitorService
 from services.radarr_service import RadarrService
 from services.registry import services
 from services.search.sonarr_search_service import SonarrSearchService
@@ -42,8 +41,6 @@ services.radarr = RadarrService()
 services.sonarr = SonarrService()
 services.sonarr_search = SonarrSearchService()
 services.overseerr = OverseerrService()
-
-services.pipeline_monitor = PipelineMonitorService()
 
 services.delete_confirmation = DeleteConfirmationService()
 services.delete = DeleteService()
@@ -74,8 +71,6 @@ initialize_debug_routes(
     services.sonarr_search,
     services.sonarr,
     services.radarr,
-    services.pipeline_monitor,
-    services.health_monitor,
 )
 
 
