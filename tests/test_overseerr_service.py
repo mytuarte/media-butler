@@ -34,6 +34,17 @@ class OverseerrServiceTests(unittest.TestCase):
             headers=service.headers,
         )
 
+    def test_connection_uses_authenticated_current_user_endpoint(self):
+        service = OverseerrService()
+        service.http = Mock()
+
+        service.test_connection()
+
+        service.http.get.assert_called_once_with(
+            f"{Config.OVERSEERR_URL}/api/v1/auth/me",
+            headers=service.headers,
+        )
+
     def test_forced_request_refresh_finds_request_created_after_cache(self):
         service = OverseerrService()
         service.http = Mock()

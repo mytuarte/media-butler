@@ -25,6 +25,19 @@ def _float_config_value(
     return float(os.getenv(name, default))
 
 
+def _positive_int_config_value(
+    name: str,
+    default: str,
+) -> int:
+    """Read an interval configuration value that must be a positive integer."""
+    value = int(os.getenv(name, default))
+
+    if value <= 0:
+        raise ValueError(f"{name} must be a positive integer.")
+
+    return value
+
+
 class Config:
     ENVIRONMENT = environment
 
@@ -74,6 +87,10 @@ class Config:
     )
     MEDIA_ATTENTION_INTERVAL_SECONDS = _float_config_value(
         "MEDIA_ATTENTION_INTERVAL_SECONDS",
+        "60",
+    )
+    HEALTH_MONITOR_INTERVAL_SECONDS = _positive_int_config_value(
+        "HEALTH_MONITOR_INTERVAL_SECONDS",
         "60",
     )
     TRENDING_MOVIES_INTERVAL_HOURS = _float_config_value(

@@ -5,9 +5,9 @@ import unittest
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
-from config import Config
+from config import Config, _positive_int_config_value
 from models.health_issue import HealthIssue
 from services.health_monitor_service import HealthMonitorService
 from services.registry import services
@@ -42,6 +42,7 @@ class HealthMonitorServiceTests(unittest.TestCase):
         self.previous_media_root = Config.MEDIA_ROOT
         self.previous_warning_threshold = Config.STORAGE_WARNING_THRESHOLD_PERCENT
         self.previous_critical_threshold = Config.STORAGE_CRITICAL_THRESHOLD_PERCENT
+        self.previous_health_interval = Config.HEALTH_MONITOR_INTERVAL_SECONDS
         services.discord = self.discord
 
     def tearDown(self):
@@ -49,6 +50,7 @@ class HealthMonitorServiceTests(unittest.TestCase):
         Config.MEDIA_ROOT = self.previous_media_root
         Config.STORAGE_WARNING_THRESHOLD_PERCENT = self.previous_warning_threshold
         Config.STORAGE_CRITICAL_THRESHOLD_PERCENT = self.previous_critical_threshold
+        Config.HEALTH_MONITOR_INTERVAL_SECONDS = self.previous_health_interval
         self.temporary_directory.cleanup()
 
     def create_monitor(self):
@@ -471,6 +473,8 @@ class HealthMonitorServiceTests(unittest.TestCase):
             "test_connection",
         ), patch.object(
             monitor.plex, "test_connection"
+        ), patch.object(
+            monitor.overseerr, "test_connection"
         ):
             issues = monitor.check()
 
@@ -484,8 +488,135 @@ class HealthMonitorServiceTests(unittest.TestCase):
                 monitor.SONARR_MONITOR_SOURCE,
                 monitor.SABNZBD_MONITOR_SOURCE,
                 monitor.PLEX_MONITOR_SOURCE,
+                monitor.OVERSEERR_MONITOR_SOURCE,
             },
         )
+
+    def test_overseerr_failure_creates_critical_availability_issue(self):
+        monitor = self.create_monitor()
+
+        issues, checked = monitor._check_service_availability(
+            "Overseerr",
+            monitor.OVERSEERR_MONITOR_SOURCE,
+            lambda: (_ for _ in ()).throw(PermissionError("invalid API key")),
+        )
+
+        self.assertFalse(checked)
+        self.assertEqual(issues[0].title, "Overseerr unavailable")
+        self.assertEqual(issues[0].issue_type, "service")
+        self.assertEqual(issues[0].severity, "critical")
+        self.assertEqual(issues[0].monitor_source, "overseerr")
+
+    def test_successful_overseerr_check_marks_only_overseerr_healthy(self):
+        monitor = self.create_monitor()
+
+        with patch.object(
+            monitor, "_check_sab_queue", return_value=([], False)
+        ), patch.object(
+            monitor, "_check_storage", return_value=([], False)
+        ), patch.object(
+            monitor.radarr,
+            "test_connection",
+            side_effect=ConnectionError("unavailable"),
+        ), patch.object(
+            monitor.sonarr,
+            "test_connection",
+            side_effect=ConnectionError("unavailable"),
+        ), patch.object(
+            monitor.sabnzbd,
+            "test_connection",
+            side_effect=ConnectionError("unavailable"),
+        ), patch.object(
+            monitor.plex,
+            "test_connection",
+            side_effect=ConnectionError("unavailable"),
+        ), patch.object(monitor.overseerr, "test_connection"):
+            monitor.check()
+
+        self.assertSetEqual(
+            monitor.successful_monitor_sources,
+            {monitor.OVERSEERR_MONITOR_SOURCE},
+        )
+
+    def test_overseerr_outage_does_not_stop_other_service_checks(self):
+        monitor = self.create_monitor()
+
+        with patch.object(
+            monitor, "_check_sab_queue", return_value=([], False)
+        ), patch.object(
+            monitor, "_check_storage", return_value=([], False)
+        ), patch.object(
+            monitor.radarr, "test_connection"
+        ) as radarr_check, patch.object(
+            monitor.sonarr, "test_connection"
+        ) as sonarr_check, patch.object(
+            monitor.sabnzbd, "test_connection"
+        ) as sabnzbd_check, patch.object(
+            monitor.plex, "test_connection"
+        ) as plex_check, patch.object(
+            monitor.overseerr,
+            "test_connection",
+            side_effect=ConnectionError("connection refused"),
+        ):
+            issues = monitor.check()
+
+        self.assertEqual([issue.title for issue in issues], ["Overseerr unavailable"])
+        for check in (radarr_check, sonarr_check, sabnzbd_check, plex_check):
+            check.assert_called_once_with()
+
+    def test_overseerr_alert_resolves_after_successful_grace_cycles(self):
+        monitor = self.create_monitor()
+        issue = HealthIssue(
+            title="Overseerr unavailable",
+            issue_type="service",
+            details="Unable to connect to Overseerr.\nError: invalid API key",
+            created_at=datetime(2026, 7, 21, 12, 0),
+            severity="critical",
+            monitor_source=monitor.OVERSEERR_MONITOR_SOURCE,
+        )
+
+        self.process(monitor, [issue], set())
+        self.process(monitor, [], {monitor.OVERSEERR_MONITOR_SOURCE})
+        self.assertEqual(self.discord.deleted, [])
+
+        self.process(monitor, [], {monitor.OVERSEERR_MONITOR_SOURCE})
+
+        self.assertEqual(self.discord.deleted, [101])
+
+    def test_health_monitor_interval_defaults_to_60_seconds(self):
+        with patch.dict("os.environ", {}, clear=True):
+            self.assertEqual(
+                _positive_int_config_value("HEALTH_MONITOR_INTERVAL_SECONDS", "60"),
+                60,
+            )
+
+    def test_health_monitor_loop_uses_configured_interval(self):
+        monitor = self.create_monitor()
+        Config.HEALTH_MONITOR_INTERVAL_SECONDS = 17
+        monitor.running = True
+
+        def check_once():
+            monitor.running = False
+            return []
+
+        monitor.check = check_once
+        with patch.object(
+            monitor, "_process_issues", new_callable=AsyncMock
+        ), patch(
+            "services.health_monitor_service.asyncio.sleep", new_callable=AsyncMock
+        ) as sleep:
+            asyncio.run(monitor._monitor_loop())
+
+        sleep.assert_awaited_once_with(17)
+
+    def test_health_monitor_interval_requires_a_positive_integer(self):
+        for invalid_value in ("invalid", "0", "-1"):
+            with self.subTest(invalid_value=invalid_value), patch.dict(
+                "os.environ",
+                {"HEALTH_MONITOR_INTERVAL_SECONDS": invalid_value},
+            ):
+                with self.assertRaises(ValueError):
+                    _positive_int_config_value("HEALTH_MONITOR_INTERVAL_SECONDS", "60")
 
     def test_service_alert_resolves_only_after_successful_checks(self):
         monitor = self.create_monitor()
@@ -525,6 +656,8 @@ class HealthMonitorServiceTests(unittest.TestCase):
             monitor.plex,
             "test_connection",
             side_effect=[ConnectionError("connection refused"), None, None],
+        ), patch.object(
+            monitor.overseerr, "test_connection"
         ):
             issues = monitor.check()
             self.process(monitor, issues, monitor.successful_monitor_sources)
