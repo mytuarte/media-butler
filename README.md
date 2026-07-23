@@ -91,6 +91,24 @@ When a download finishes, it:
 4. Sends a Discord embed.
 5. Mentions the requester.
 
+## Butler Health monitoring
+
+Butler Health monitors infrastructure and service availability for Radarr, Sonarr,
+SABnzbd (including queue access), Plex, Overseerr, qBittorrent, and configured
+storage. qBittorrent monitoring only checks WebUI availability and authenticated
+API access; it does not inspect torrents, download titles, queues, or pipeline
+states. Individual media acquisition progress and stalls remain owned by Media
+Attention.
+
+qBittorrent monitoring is optional. Set all three values below to enable it; if
+all are blank it is disabled. Supplying only some values is a configuration error.
+
+```env
+QBITTORRENT_URL=
+QBITTORRENT_USERNAME=
+QBITTORRENT_PASSWORD=
+```
+
 ---
 
 # Tech Stack

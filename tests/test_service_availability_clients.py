@@ -5,6 +5,7 @@ from unittest.mock import Mock, patch
 
 from config import Config
 from services.plex_service import PlexService
+from services.qbittorrent_client import QbittorrentClient
 from services.radarr_service import RadarrService
 from services.sabnzbd_client import SabnzbdClient
 from services.sonarr_service import SonarrService
@@ -92,6 +93,153 @@ class ServiceAvailabilityClientTests(unittest.TestCase):
                 "timeout": 10,
             },
         )
+
+    def test_qbittorrent_probe_logs_in_and_reuses_session_for_version(self):
+        previous_values = {
+            "QBITTORRENT_URL": Config.QBITTORRENT_URL,
+            "QBITTORRENT_USERNAME": Config.QBITTORRENT_USERNAME,
+            "QBITTORRENT_PASSWORD": Config.QBITTORRENT_PASSWORD,
+        }
+        Config.QBITTORRENT_URL = "http://qbittorrent"
+        Config.QBITTORRENT_USERNAME = "butler"
+        Config.QBITTORRENT_PASSWORD = "secret-password"
+        try:
+            with patch("services.qbittorrent_client.requests.Session") as session_class:
+                session = session_class.return_value
+                session.post.return_value = Mock(text="Ok.")
+                session.get.return_value = Mock(text="5.1.0")
+
+                self.assertEqual(QbittorrentClient().test_connection(), "5.1.0")
+
+            session.post.assert_called_once_with(
+                "http://qbittorrent/api/v2/auth/login",
+                data={"username": "butler", "password": "secret-password"},
+                headers={"Referer": "http://qbittorrent"},
+                timeout=10,
+            )
+            session.get.assert_called_once_with(
+                "http://qbittorrent/api/v2/app/version",
+                headers={"Referer": "http://qbittorrent"},
+                timeout=10,
+            )
+            session.post.return_value.raise_for_status.assert_called_once_with()
+            session.get.return_value.raise_for_status.assert_called_once_with()
+        finally:
+            for name, value in previous_values.items():
+                setattr(Config, name, value)
+
+    def test_qbittorrent_rejected_http_200_login_does_not_expose_password(self):
+        previous_values = {
+            "QBITTORRENT_URL": Config.QBITTORRENT_URL,
+            "QBITTORRENT_USERNAME": Config.QBITTORRENT_USERNAME,
+            "QBITTORRENT_PASSWORD": Config.QBITTORRENT_PASSWORD,
+        }
+        Config.QBITTORRENT_URL = "http://qbittorrent"
+        Config.QBITTORRENT_USERNAME = "butler"
+        Config.QBITTORRENT_PASSWORD = "secret-password"
+        try:
+            with patch("services.qbittorrent_client.requests.Session") as session_class:
+                session_class.return_value.post.return_value = Mock(text="Fails.")
+
+                with self.assertRaises(PermissionError) as error:
+                    QbittorrentClient().test_connection()
+
+            self.assertNotIn("secret-password", str(error.exception))
+        finally:
+            for name, value in previous_values.items():
+                setattr(Config, name, value)
+
+    def test_qbittorrent_unexpected_http_200_login_response_raises(self):
+        previous_values = {
+            "QBITTORRENT_URL": Config.QBITTORRENT_URL,
+            "QBITTORRENT_USERNAME": Config.QBITTORRENT_USERNAME,
+            "QBITTORRENT_PASSWORD": Config.QBITTORRENT_PASSWORD,
+        }
+        Config.QBITTORRENT_URL = "http://qbittorrent"
+        Config.QBITTORRENT_USERNAME = "butler"
+        Config.QBITTORRENT_PASSWORD = "secret-password"
+        try:
+            with patch("services.qbittorrent_client.requests.Session") as session_class:
+                session_class.return_value.post.return_value = Mock(text="Unexpected")
+
+                with self.assertRaisesRegex(ValueError, "unexpected login response"):
+                    QbittorrentClient().test_connection()
+        finally:
+            for name, value in previous_values.items():
+                setattr(Config, name, value)
+
+    def test_qbittorrent_http_connection_and_timeout_failures_raise(self):
+        previous_values = {
+            "QBITTORRENT_URL": Config.QBITTORRENT_URL,
+            "QBITTORRENT_USERNAME": Config.QBITTORRENT_USERNAME,
+            "QBITTORRENT_PASSWORD": Config.QBITTORRENT_PASSWORD,
+        }
+        Config.QBITTORRENT_URL = "http://qbittorrent"
+        Config.QBITTORRENT_USERNAME = "butler"
+        Config.QBITTORRENT_PASSWORD = "secret-password"
+        try:
+            for failure in (requests.ConnectionError("offline"), requests.Timeout("slow")):
+                with self.subTest(failure=failure), patch(
+                    "services.qbittorrent_client.requests.Session"
+                ) as session_class:
+                    session_class.return_value.post.side_effect = failure
+
+                    with self.assertRaises(type(failure)):
+                        QbittorrentClient().test_connection()
+        finally:
+            for name, value in previous_values.items():
+                setattr(Config, name, value)
+
+    def test_qbittorrent_http_failure_and_empty_version_response_raise(self):
+        previous_values = {
+            "QBITTORRENT_URL": Config.QBITTORRENT_URL,
+            "QBITTORRENT_USERNAME": Config.QBITTORRENT_USERNAME,
+            "QBITTORRENT_PASSWORD": Config.QBITTORRENT_PASSWORD,
+        }
+        Config.QBITTORRENT_URL = "http://qbittorrent"
+        Config.QBITTORRENT_USERNAME = "butler"
+        Config.QBITTORRENT_PASSWORD = "secret-password"
+        try:
+            with patch("services.qbittorrent_client.requests.Session") as session_class:
+                response = Mock(text="Ok.")
+                response.raise_for_status.side_effect = requests.HTTPError("403 Client Error")
+                session_class.return_value.post.return_value = response
+
+                with self.assertRaises(requests.HTTPError):
+                    QbittorrentClient().test_connection()
+
+            with patch("services.qbittorrent_client.requests.Session") as session_class:
+                session_class.return_value.post.return_value = Mock(text="Ok.")
+                session_class.return_value.get.return_value = Mock(text="  ")
+
+                with self.assertRaisesRegex(ValueError, "unusable version response"):
+                    QbittorrentClient().test_connection()
+        finally:
+            for name, value in previous_values.items():
+                setattr(Config, name, value)
+
+    def test_qbittorrent_html_or_multiline_version_response_raises(self):
+        previous_values = {
+            "QBITTORRENT_URL": Config.QBITTORRENT_URL,
+            "QBITTORRENT_USERNAME": Config.QBITTORRENT_USERNAME,
+            "QBITTORRENT_PASSWORD": Config.QBITTORRENT_PASSWORD,
+        }
+        Config.QBITTORRENT_URL = "http://qbittorrent"
+        Config.QBITTORRENT_USERNAME = "butler"
+        Config.QBITTORRENT_PASSWORD = "secret-password"
+        try:
+            for response_text in ("<html>Login</html>", "5.1.0\nLogin"):
+                with self.subTest(response_text=response_text), patch(
+                    "services.qbittorrent_client.requests.Session"
+                ) as session_class:
+                    session_class.return_value.post.return_value = Mock(text="Ok.")
+                    session_class.return_value.get.return_value = Mock(text=response_text)
+
+                    with self.assertRaisesRegex(ValueError, "unusable version response"):
+                        QbittorrentClient().test_connection()
+        finally:
+            for name, value in previous_values.items():
+                setattr(Config, name, value)
 
     def test_sabnzbd_history_uses_history_endpoint(self):
         with patch("services.sabnzbd_client.requests.get") as get:
