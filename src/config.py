@@ -118,6 +118,11 @@ class Config:
     SABNZBD_URL = os.getenv("SABNZBD_URL")
     SABNZBD_API_KEY = os.getenv("SABNZBD_API_KEY")
 
+    # qBittorrent
+    QBITTORRENT_URL = os.getenv("QBITTORRENT_URL")
+    QBITTORRENT_USERNAME = os.getenv("QBITTORRENT_USERNAME")
+    QBITTORRENT_PASSWORD = os.getenv("QBITTORRENT_PASSWORD")
+
     # Plex
     PLEX_URL = os.getenv("PLEX_URL")
     PLEX_TOKEN = os.getenv("PLEX_TOKEN")
@@ -156,3 +161,24 @@ class Config:
             "discord_id": int(os.getenv("JAY_ID")),
         },
     }
+
+    @classmethod
+    def qbittorrent_monitoring_enabled(cls) -> bool:
+        """Return whether qBittorrent monitoring is configured completely."""
+        settings = (
+            cls.QBITTORRENT_URL,
+            cls.QBITTORRENT_USERNAME,
+            cls.QBITTORRENT_PASSWORD,
+        )
+
+        if not any(settings):
+            return False
+
+        if not all(settings):
+            raise ValueError(
+                "QBITTORRENT_URL, QBITTORRENT_USERNAME, and "
+                "QBITTORRENT_PASSWORD must all be configured to enable "
+                "qBittorrent monitoring."
+            )
+
+        return True

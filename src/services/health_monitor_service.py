@@ -7,6 +7,7 @@ from pathlib import Path
 from config import Config
 from models.health_issue import HealthIssue
 from services.plex_service import PlexService
+from services.qbittorrent_client import QbittorrentClient
 from services.log_service import logger
 from services.overseerr_service import OverseerrService
 from services.radarr_service import RadarrService
@@ -26,6 +27,7 @@ class HealthMonitorService:
     SABNZBD_MONITOR_SOURCE = "sabnzbd"
     PLEX_MONITOR_SOURCE = "plex"
     OVERSEERR_MONITOR_SOURCE = "overseerr"
+    QBITTORRENT_MONITOR_SOURCE = "qbittorrent"
 
     HEALTH_STATE_FILE = Path("data/health_alerts.json")
 
@@ -35,6 +37,9 @@ class HealthMonitorService:
         self.sonarr = SonarrService()
         self.plex = PlexService()
         self.overseerr = OverseerrService()
+        self.qbittorrent = (
+            QbittorrentClient() if Config.qbittorrent_monitoring_enabled() else None
+        )
 
         self.forced_issues: list[HealthIssue] = []
 
@@ -97,7 +102,7 @@ class HealthMonitorService:
                 self.STORAGE_MONITOR_SOURCE,
             )
 
-        for service_name, monitor_source, check in (
+        service_checks = [
             ("Radarr", self.RADARR_MONITOR_SOURCE, self.radarr.test_connection),
             ("Sonarr", self.SONARR_MONITOR_SOURCE, self.sonarr.test_connection),
             ("SABnzbd", self.SABNZBD_MONITOR_SOURCE, self.sabnzbd.test_connection),
@@ -107,7 +112,18 @@ class HealthMonitorService:
                 self.OVERSEERR_MONITOR_SOURCE,
                 self.overseerr.test_connection,
             ),
-        ):
+        ]
+
+        if self.qbittorrent is not None:
+            service_checks.append(
+                (
+                    "qBittorrent",
+                    self.QBITTORRENT_MONITOR_SOURCE,
+                    self.qbittorrent.test_connection,
+                )
+            )
+
+        for service_name, monitor_source, check in service_checks:
             service_issues, service_checked = self._check_service_availability(
                 service_name,
                 monitor_source,
@@ -145,6 +161,7 @@ class HealthMonitorService:
             title = {
                 self.PLEX_MONITOR_SOURCE: "Plex unavailable",
                 self.OVERSEERR_MONITOR_SOURCE: "Overseerr unavailable",
+                self.QBITTORRENT_MONITOR_SOURCE: "qBittorrent unavailable",
             }.get(monitor_source, f"{service_name} Offline")
 
             return [
@@ -379,6 +396,10 @@ class HealthMonitorService:
     def _should_resolve_alert(self, alert: dict) -> bool:
         return (
             alert["monitor_source"] == self.RETIRED_PIPELINE_MONITOR_SOURCE
+            or (
+                alert["monitor_source"] == self.QBITTORRENT_MONITOR_SOURCE
+                and self.qbittorrent is None
+            )
             or alert["monitor_source"] in self.successful_monitor_sources
         )
 

@@ -19,6 +19,7 @@ class FakeDiscordService:
         self.updated = []
         self.deleted = []
         self.update_result = True
+        self.delete_result = True
 
     async def send_health_alert(self, issue):
         self.sent.append(issue)
@@ -30,7 +31,7 @@ class FakeDiscordService:
 
     async def delete_health_alert(self, message_id):
         self.deleted.append(message_id)
-        return True
+        return self.delete_result
 
 
 class HealthMonitorServiceTests(unittest.TestCase):
@@ -43,6 +44,14 @@ class HealthMonitorServiceTests(unittest.TestCase):
         self.previous_warning_threshold = Config.STORAGE_WARNING_THRESHOLD_PERCENT
         self.previous_critical_threshold = Config.STORAGE_CRITICAL_THRESHOLD_PERCENT
         self.previous_health_interval = Config.HEALTH_MONITOR_INTERVAL_SECONDS
+        self.previous_qbittorrent_settings = {
+            "QBITTORRENT_URL": Config.QBITTORRENT_URL,
+            "QBITTORRENT_USERNAME": Config.QBITTORRENT_USERNAME,
+            "QBITTORRENT_PASSWORD": Config.QBITTORRENT_PASSWORD,
+        }
+        Config.QBITTORRENT_URL = None
+        Config.QBITTORRENT_USERNAME = None
+        Config.QBITTORRENT_PASSWORD = None
         services.discord = self.discord
 
     def tearDown(self):
@@ -51,6 +60,8 @@ class HealthMonitorServiceTests(unittest.TestCase):
         Config.STORAGE_WARNING_THRESHOLD_PERCENT = self.previous_warning_threshold
         Config.STORAGE_CRITICAL_THRESHOLD_PERCENT = self.previous_critical_threshold
         Config.HEALTH_MONITOR_INTERVAL_SECONDS = self.previous_health_interval
+        for name, value in self.previous_qbittorrent_settings.items():
+            setattr(Config, name, value)
         self.temporary_directory.cleanup()
 
     def create_monitor(self):
@@ -582,6 +593,196 @@ class HealthMonitorServiceTests(unittest.TestCase):
         self.process(monitor, [], {monitor.OVERSEERR_MONITOR_SOURCE})
 
         self.assertEqual(self.discord.deleted, [101])
+
+    def test_qbittorrent_all_settings_absent_disables_monitoring_without_alert(self):
+        monitor = self.create_monitor()
+
+        self.assertIsNone(monitor.qbittorrent)
+        self.assertFalse(Config.qbittorrent_monitoring_enabled())
+
+    def test_partial_qbittorrent_settings_fail_configuration_clearly(self):
+        Config.QBITTORRENT_URL = "http://qbittorrent"
+
+        with self.assertRaisesRegex(ValueError, "QBITTORRENT_USERNAME"):
+            self.create_monitor()
+
+    def test_qbittorrent_failure_creates_service_issue_and_checks_others(self):
+        Config.QBITTORRENT_URL = "http://qbittorrent"
+        Config.QBITTORRENT_USERNAME = "butler"
+        Config.QBITTORRENT_PASSWORD = "secret"
+        monitor = self.create_monitor()
+
+        with patch.object(monitor, "_check_sab_queue", return_value=([], False)), patch.object(
+            monitor, "_check_storage", return_value=([], False)
+        ), patch.object(monitor.radarr, "test_connection") as radarr_check, patch.object(
+            monitor.sonarr, "test_connection"
+        ) as sonarr_check, patch.object(monitor.sabnzbd, "test_connection") as sabnzbd_check, patch.object(
+            monitor.plex, "test_connection"
+        ) as plex_check, patch.object(monitor.overseerr, "test_connection") as overseerr_check, patch.object(
+            monitor.qbittorrent,
+            "test_connection",
+            side_effect=ConnectionError("connection refused"),
+        ):
+            issues = monitor.check()
+
+        self.assertEqual(len(issues), 1)
+        issue = issues[0]
+        self.assertEqual(issue.title, "qBittorrent unavailable")
+        self.assertEqual(issue.issue_type, "service")
+        self.assertEqual(issue.severity, "critical")
+        self.assertEqual(issue.monitor_source, "qbittorrent")
+        for check in (
+            radarr_check,
+            sonarr_check,
+            sabnzbd_check,
+            plex_check,
+            overseerr_check,
+        ):
+            check.assert_called_once_with()
+
+    def test_successful_qbittorrent_check_marks_its_monitor_source_healthy(self):
+        Config.QBITTORRENT_URL = "http://qbittorrent"
+        Config.QBITTORRENT_USERNAME = "butler"
+        Config.QBITTORRENT_PASSWORD = "secret"
+        monitor = self.create_monitor()
+
+        with patch.object(monitor, "_check_sab_queue", return_value=([], False)), patch.object(
+            monitor, "_check_storage", return_value=([], False)
+        ), patch.object(
+            monitor.radarr, "test_connection", side_effect=ConnectionError("offline")
+        ), patch.object(
+            monitor.sonarr, "test_connection", side_effect=ConnectionError("offline")
+        ), patch.object(
+            monitor.sabnzbd, "test_connection", side_effect=ConnectionError("offline")
+        ), patch.object(
+            monitor.plex, "test_connection", side_effect=ConnectionError("offline")
+        ), patch.object(
+            monitor.overseerr, "test_connection", side_effect=ConnectionError("offline")
+        ), patch.object(monitor.qbittorrent, "test_connection") as qbittorrent_check:
+            monitor.check()
+
+        qbittorrent_check.assert_called_once_with()
+        self.assertSetEqual(
+            monitor.successful_monitor_sources,
+            {monitor.QBITTORRENT_MONITOR_SOURCE},
+        )
+
+    def test_qbittorrent_alert_resolves_after_successful_grace_cycles(self):
+        issue = HealthIssue(
+            title="qBittorrent unavailable",
+            issue_type="service",
+            details="Unable to connect to qBittorrent.\nError: offline",
+            created_at=datetime(2026, 7, 21, 12, 0),
+            severity="critical",
+            monitor_source=HealthMonitorService.QBITTORRENT_MONITOR_SOURCE,
+        )
+        monitor = self.create_monitor()
+
+        self.process(monitor, [issue], set())
+        self.process(monitor, [], {monitor.QBITTORRENT_MONITOR_SOURCE})
+        self.assertEqual(self.discord.deleted, [])
+
+        self.process(monitor, [], {monitor.QBITTORRENT_MONITOR_SOURCE})
+
+        self.assertEqual(self.discord.deleted, [101])
+
+    def test_disabled_qbittorrent_alert_is_retired_after_grace_cycles(self):
+        issue = HealthIssue(
+            title="qBittorrent unavailable",
+            issue_type="service",
+            details="Unable to connect to qBittorrent.\nError: offline",
+            created_at=datetime(2026, 7, 21, 12, 0),
+            severity="critical",
+            monitor_source=HealthMonitorService.QBITTORRENT_MONITOR_SOURCE,
+        )
+        self.state_file.write_text(
+            json.dumps(
+                {
+                    issue.alert_key: {
+                        "message_id": 101,
+                        "issue_type": issue.issue_type,
+                        "details": issue.details,
+                        "created_at": issue.created_at.isoformat(),
+                        "severity": issue.severity,
+                        "missing_cycles": 0,
+                        "monitor_source": issue.monitor_source,
+                    }
+                }
+            )
+        )
+        monitor = self.create_monitor()
+
+        self.process(monitor, [], set())
+        self.assertEqual(self.discord.deleted, [])
+        self.assertIn(issue.alert_key, monitor.alert_messages)
+
+        self.process(monitor, [], set())
+
+        self.assertEqual(self.discord.deleted, [101])
+        self.assertNotIn(issue.alert_key, monitor.alert_messages)
+        self.assertEqual(json.loads(self.state_file.read_text()), {})
+
+    def test_failed_disabled_qbittorrent_alert_deletion_preserves_state_for_retry(self):
+        monitor = self.create_monitor()
+        issue = HealthIssue(
+            title="qBittorrent unavailable",
+            issue_type="service",
+            details="Unable to connect to qBittorrent.\nError: offline",
+            created_at=datetime(2026, 7, 21, 12, 0),
+            severity="critical",
+            monitor_source=HealthMonitorService.QBITTORRENT_MONITOR_SOURCE,
+        )
+        self.process(monitor, [issue], set())
+        self.discord.delete_result = False
+
+        self.process(monitor, [], set())
+        self.process(monitor, [], set())
+
+        self.assertEqual(self.discord.deleted, [101])
+        self.assertIn(issue.alert_key, monitor.alert_messages)
+        self.assertIn(issue.alert_key, json.loads(self.state_file.read_text()))
+
+        self.discord.delete_result = True
+        self.process(monitor, [], set())
+
+        self.assertEqual(self.discord.deleted, [101, 101])
+        self.assertNotIn(issue.alert_key, monitor.alert_messages)
+
+    def test_reenabled_qbittorrent_monitoring_resumes_normal_checking(self):
+        monitor = self.create_monitor()
+        issue = HealthIssue(
+            title="qBittorrent unavailable",
+            issue_type="service",
+            details="Unable to connect to qBittorrent.\nError: offline",
+            created_at=datetime(2026, 7, 21, 12, 0),
+            severity="critical",
+            monitor_source=HealthMonitorService.QBITTORRENT_MONITOR_SOURCE,
+        )
+        self.process(monitor, [issue], set())
+        self.process(monitor, [], set())
+
+        Config.QBITTORRENT_URL = "http://qbittorrent"
+        Config.QBITTORRENT_USERNAME = "butler"
+        Config.QBITTORRENT_PASSWORD = "secret"
+        monitor = self.create_monitor()
+
+        with patch.object(monitor, "_check_sab_queue", return_value=([], False)), patch.object(
+            monitor, "_check_storage", return_value=([], False)
+        ), patch.object(monitor.radarr, "test_connection"), patch.object(
+            monitor.sonarr, "test_connection"
+        ), patch.object(monitor.sabnzbd, "test_connection"), patch.object(
+            monitor.plex, "test_connection"
+        ), patch.object(monitor.overseerr, "test_connection"), patch.object(
+            monitor.qbittorrent,
+            "test_connection",
+            side_effect=ConnectionError("still offline"),
+        ):
+            issues = monitor.check()
+        self.process(monitor, issues, monitor.successful_monitor_sources)
+
+        self.assertEqual([health_issue.title for health_issue in issues], [issue.title])
+        self.assertEqual(self.discord.deleted, [])
+        self.assertEqual(monitor.alert_messages[issue.alert_key]["missing_cycles"], 0)
 
     def test_health_monitor_interval_defaults_to_60_seconds(self):
         with patch.dict("os.environ", {}, clear=True):
