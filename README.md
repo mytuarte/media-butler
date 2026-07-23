@@ -91,6 +91,19 @@ When a download finishes, it:
 4. Sends a Discord embed.
 5. Mentions the requester.
 
+## Media Attention
+
+Media Attention monitors requested movies with `MEDIA_ATTENTION_STALL_MINUTES` and
+requested TV **series** with `MEDIA_ATTENTION_TV_STALL_MINUTES` (120 minutes by
+default). TV tracking is one item per series, never one alert per episode. It
+ignores Season 0 specials and future/no-date episodes, considering only normal
+episodes whose usable Sonarr air date/time is already due (date-only and naive
+Sonarr values are interpreted as UTC). A newly aired missing weekly episode
+starts a fresh series progress window. Large series continue to reset their
+timer as episodes import or Sonarr queue bytes/percentage progress, so a long
+active download does not itself alert.
+Sonarr completion notifications are unchanged.
+
 ## Butler Health monitoring
 
 Butler Health monitors infrastructure and service availability for Radarr, Sonarr,

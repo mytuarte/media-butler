@@ -102,8 +102,9 @@ class SonarrService:
     def get_episodes(
         self,
         series_id: int,
+        refresh: bool = False,
     ):
-        if series_id in self._episode_cache:
+        if series_id in self._episode_cache and not refresh:
             return self._episode_cache[series_id]
 
         headers = {
@@ -126,6 +127,35 @@ class SonarrService:
         self._episode_cache[series_id] = episodes
 
         return episodes
+
+    def get_queue(self) -> list[dict]:
+        """Return every Sonarr queue record, with series/episode identifiers."""
+        headers = {"X-Api-Key": Config.SONARR_API_KEY}
+        records, page = [], 1
+        previous_batch = None
+        for _ in range(100):
+            response = requests.get(f"{Config.SONARR_URL}/api/v3/queue", headers=headers,
+                params={"page": page, "pageSize": 1000, "includeEpisode": "true", "includeSeries": "true"}, timeout=10)
+            response.raise_for_status()
+            payload = response.json()
+            if isinstance(payload, list):
+                return payload
+            if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
+                raise ValueError("Sonarr queue response must contain a records list")
+            batch = payload["records"]
+            records.extend(batch)
+            total = payload.get("totalRecords")
+            if not isinstance(total, int) or total < len(records):
+                raise ValueError("Sonarr queue response has invalid totalRecords")
+            if len(records) >= total:
+                return records
+            if not batch:
+                raise ValueError("Sonarr queue pagination ended before totalRecords")
+            if previous_batch == batch:
+                raise ValueError("Sonarr queue pagination repeated a page")
+            previous_batch = batch
+            page += 1
+        raise ValueError("Sonarr queue pagination exceeded 100 pages")
 
     def get_episode_files(
         self,

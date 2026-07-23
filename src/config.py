@@ -82,9 +82,8 @@ class Config:
 
     # TMDb
     TMDB_API_KEY = os.getenv("TMDB_API_KEY")
-    MEDIA_ATTENTION_STALL_MINUTES = int(
-        os.getenv("MEDIA_ATTENTION_STALL_MINUTES", "20")
-    )
+    MEDIA_ATTENTION_STALL_MINUTES = _positive_int_config_value("MEDIA_ATTENTION_STALL_MINUTES", "20")
+    MEDIA_ATTENTION_TV_STALL_MINUTES = _positive_int_config_value("MEDIA_ATTENTION_TV_STALL_MINUTES", "120")
     MEDIA_ATTENTION_INTERVAL_SECONDS = _float_config_value(
         "MEDIA_ATTENTION_INTERVAL_SECONDS",
         "60",

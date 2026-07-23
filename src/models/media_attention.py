@@ -19,6 +19,9 @@ class PipelineStage(Enum):
     IMPORT_PENDING = "import_pending"
     PLEX_SYNC_PENDING = "plex_sync_pending"
     PLEX_AVAILABLE = "plex_available"
+    WAITING_FOR_SONARR = "waiting_for_sonarr"
+    SONARR_SEARCHING = "sonarr_searching"
+    SERIES_CAUGHT_UP = "series_caught_up"
 
 
 @dataclass(frozen=True)
@@ -27,10 +30,30 @@ class EpisodeProgress:
     arr_imported_episode_keys: tuple[str, ...] = ()
     plex_episode_keys: tuple[str, ...] = ()
 
+    @property
+    def missing_episode_keys(self) -> tuple[str, ...]:
+        return tuple(key for key in self.released_episode_keys if key not in self.arr_imported_episode_keys)
+
+    @property
+    def released_count(self) -> int:
+        return len(self.released_episode_keys)
+
+    @property
+    def imported_released_count(self) -> int:
+        return len(self.arr_imported_episode_keys)
+
+    @property
+    def caught_up(self) -> bool:
+        return bool(self.released_episode_keys) and not self.missing_episode_keys
+
     def to_dict(self) -> dict:
         return {
             "released_episode_keys": list(self.released_episode_keys),
             "arr_imported_episode_keys": list(self.arr_imported_episode_keys),
+            "missing_episode_keys": list(self.missing_episode_keys),
+            "released_count": self.released_count,
+            "imported_released_count": self.imported_released_count,
+            "caught_up": self.caught_up,
             "plex_episode_keys": list(self.plex_episode_keys),
         }
 
@@ -120,6 +143,7 @@ class TrackedMedia:
     title: str
     current_stage: PipelineStage
     previous_stage: PipelineStage | None
+    first_seen_at: datetime
     last_progress_at: datetime
     last_progress_fingerprint: str
     stall_generation: int = 0
@@ -134,6 +158,7 @@ class TrackedMedia:
             "previous_stage": (
                 self.previous_stage.value if self.previous_stage is not None else None
             ),
+            "first_seen_at": self.first_seen_at.isoformat(),
             "last_progress_at": self.last_progress_at.isoformat(),
             "last_progress_fingerprint": self.last_progress_fingerprint,
             "stall_generation": self.stall_generation,
@@ -150,6 +175,7 @@ class TrackedMedia:
             title=data["title"],
             current_stage=PipelineStage(data["current_stage"]),
             previous_stage=(PipelineStage(previous_stage) if previous_stage else None),
+            first_seen_at=datetime.fromisoformat(data.get("first_seen_at", data["last_progress_at"])),
             last_progress_at=datetime.fromisoformat(data["last_progress_at"]),
             last_progress_fingerprint=data["last_progress_fingerprint"],
             stall_generation=data.get("stall_generation", 0),

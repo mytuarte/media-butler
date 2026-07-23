@@ -2,16 +2,16 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 
 from config import Config
-from models.media_attention import MediaAttentionAlert, PipelineSnapshot, PipelineStage
+from models.media_attention import MediaAttentionAlert, MediaAttentionMediaType, PipelineSnapshot, PipelineStage
 from services.log_service import logger
 from services.media_attention_alert_store import MediaAttentionAlertStore
 from services.media_attention_service import MediaAttentionService
 
 
 class MediaAttentionMonitorService:
-    """Periodically identifies stalled, digitally available requested movies."""
+    """Periodically identifies stalled eligible movie and TV requests."""
 
-    TERMINAL_STAGES = {PipelineStage.PLEX_AVAILABLE}
+    TERMINAL_STAGES = {PipelineStage.PLEX_AVAILABLE, PipelineStage.SERIES_CAUGHT_UP}
 
     def __init__(
         self,
@@ -29,6 +29,7 @@ class MediaAttentionMonitorService:
             interval_seconds or Config.MEDIA_ATTENTION_INTERVAL_SECONDS
         )
         self.stall_threshold = timedelta(minutes=Config.MEDIA_ATTENTION_STALL_MINUTES)
+        self.tv_stall_threshold = timedelta(minutes=Config.MEDIA_ATTENTION_TV_STALL_MINUTES)
         self.running = False
         self._task = None
 
@@ -72,13 +73,21 @@ class MediaAttentionMonitorService:
 
     async def run_cycle(self, now: datetime | None = None) -> list[PipelineSnapshot]:
         now = now or datetime.now(timezone.utc)
-        snapshots = self.attention_service.evaluate_requested_movies(now)
+        snapshots = []
+        for media_type, evaluator in (
+            ("movie", self.attention_service.evaluate_requested_movies),
+            ("TV", self.attention_service.evaluate_requested_tv),
+        ):
+            try:
+                snapshots.extend(evaluator(now))
+            except Exception:
+                logger.exception("Media Attention %s evaluation failed", media_type)
         for snapshot in snapshots:
             await self._evaluate_snapshot(snapshot, now)
         self.alert_store.save(self.alerts)
         active_count = sum(alert.status == "active" for alert in self.alerts.values())
         logger.debug(
-            "Media Attention cycle: movies checked=%s eligible=%s active attention=%s",
+            "Media Attention cycle: requests checked=%s eligible=%s active attention=%s",
             self.attention_service.last_requests_checked,
             len(snapshots),
             active_count,
@@ -93,10 +102,11 @@ class MediaAttentionMonitorService:
         elapsed = now - tracked.last_progress_at
         needs_attention = (
             snapshot.stage not in self.TERMINAL_STAGES
-            and elapsed >= self.stall_threshold
+            and elapsed >= self._threshold_for(snapshot)
         )
         logger.debug(
-            "Media Attention movie=%s stage=%s progress=%s last_progress=%s minutes needs_attention=%s",
+            "Media Attention %s=%s stage=%s progress=%s last_progress=%s minutes needs_attention=%s",
+            snapshot.media_type.value,
             snapshot.title,
             snapshot.stage.name,
             snapshot.sab_evidence.get("percent"),
@@ -141,6 +151,9 @@ class MediaAttentionMonitorService:
             active.request_id = snapshot.request_id
             active.details_fingerprint = snapshot.progress_fingerprint
             await self._update_alert(active, snapshot, stuck_minutes)
+
+    def _threshold_for(self, snapshot: PipelineSnapshot) -> timedelta:
+        return self.tv_stall_threshold if snapshot.media_type is MediaAttentionMediaType.TV else self.stall_threshold
 
     def _active_alert(self, media_key: str) -> MediaAttentionAlert | None:
         return next(

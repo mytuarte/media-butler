@@ -12,6 +12,8 @@ from services.overseerr_service import OverseerrService
 from services.plex_service import PlexService
 from services.radarr_service import RadarrService
 from services.sabnzbd_client import SabnzbdClient
+from services.sonarr_service import SonarrService
+from services.series_progress_service import SeriesProgressService
 from services.log_service import logger
 
 
@@ -28,6 +30,7 @@ class MediaAttentionService:
         tmdb: TmdbService | None = None,
         sabnzbd: SabnzbdClient | None = None,
         plex: PlexService | None = None,
+        sonarr: SonarrService | None = None,
     ):
         self.state_store = state_store or MediaAttentionStateStore()
         self.overseerr = overseerr or OverseerrService()
@@ -35,6 +38,8 @@ class MediaAttentionService:
         self.tmdb = tmdb or TmdbService()
         self.sabnzbd = sabnzbd or SabnzbdClient()
         self.plex = plex or PlexService()
+        self.sonarr = sonarr or SonarrService()
+        self.series_progress = SeriesProgressService(self.sonarr)
         self.tracked_media = self.state_store.load()
         self.last_requests_checked = 0
 
@@ -108,6 +113,44 @@ class MediaAttentionService:
 
         return snapshots
 
+    def evaluate_requested_tv(self, now: datetime | None = None) -> list[PipelineSnapshot]:
+        """Evaluate each active TV request once, at series rather than episode scope."""
+        now = now or datetime.now(timezone.utc)
+        requests = self.overseerr.get_requests().get("results", [])
+        tv_requests = self._deduplicate_tv_requests(requests)
+        if not tv_requests:
+            return []
+        series_by_tmdb = {item.get("tmdbId"): item for item in self.sonarr.get_series()
+                          if item.get("tmdbId") is not None}
+        queue = None
+        snapshots = []
+        for request in tv_requests:
+            tmdb_id = request["media"]["tmdbId"]
+            series = series_by_tmdb.get(tmdb_id)
+            if series is None and not self.tmdb.tv_has_digital_availability(tmdb_id):
+                continue
+            title = request["media"].get("title") or request.get("title") or (series or {}).get("title") or "Unknown Series"
+            progress = None
+            evidence = {"present": series is not None}
+            queue_evidence = {"active": False, "completed": False, "records": []}
+            if series is not None:
+                progress = self.series_progress.evaluate(series["id"], now)
+                if not progress.released_episode_keys:
+                    continue
+                if queue is None:
+                    queue = self.sonarr.get_queue()
+                queue_evidence = self._series_queue_evidence(series["id"], queue)
+                evidence.update({"id": series["id"]})
+            stage, detail = self._resolve_tv_stage(series, progress, queue_evidence)
+            snapshot = PipelineSnapshot(media_key=self.tv_key(tmdb_id), media_type=MediaAttentionMediaType.TV,
+                tmdb_id=tmdb_id, request_id=request["id"], title=title, stage=stage, stage_detail=detail,
+                arr_evidence=evidence, sab_evidence=queue_evidence, episode_progress=progress)
+            self.evaluate_snapshot(snapshot, now)
+            snapshots.append(snapshot)
+        if snapshots:
+            self.state_store.save(self.tracked_media)
+        return snapshots
+
     def capture_movie_snapshot(
         self,
         request: dict,
@@ -160,6 +203,7 @@ class MediaAttentionService:
                 title=snapshot.title,
                 current_stage=snapshot.stage,
                 previous_stage=None,
+                first_seen_at=now,
                 last_progress_at=now,
                 last_progress_fingerprint=snapshot.progress_fingerprint,
             )
@@ -194,6 +238,10 @@ class MediaAttentionService:
     def movie_key(cls, tmdb_id: int) -> str:
         return f"movie:tmdb:{tmdb_id}"
 
+    @classmethod
+    def tv_key(cls, tmdb_id: int) -> str:
+        return f"tv:tmdb:{tmdb_id}"
+
     def _is_active_movie_request(self, request: dict) -> bool:
         media = request.get("media", {})
         return (
@@ -201,6 +249,101 @@ class MediaAttentionService:
             and request.get("status") in self.ACTIVE_REQUEST_STATUSES
             and media.get("tmdbId") is not None
         )
+
+    @staticmethod
+    def _is_active_tv_request(request: dict) -> bool:
+        media = request.get("media", {})
+        return request.get("type") == "tv" and request.get("status") in MediaAttentionService.ACTIVE_REQUEST_STATUSES and media.get("tmdbId") is not None
+
+    @classmethod
+    def _deduplicate_tv_requests(cls, requests: list[dict]) -> list[dict]:
+        """Keep the newest request per series; ID is a stable fallback."""
+        selected = {}
+        for request in requests:
+            if not cls._is_active_tv_request(request):
+                continue
+            key = request["media"]["tmdbId"]
+            def request_id(item):
+                try:
+                    return int(item.get("id"))
+                except (TypeError, ValueError):
+                    return -1
+
+            def rank(item):
+                value = item.get("createdAt")
+                try:
+                    created = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+                    if created.tzinfo is None:
+                        created = created.replace(tzinfo=timezone.utc)
+                    return (1, created.timestamp(), request_id(item))
+                except (TypeError, ValueError):
+                    return (0, 0, request_id(item))
+            if key not in selected or rank(request) > rank(selected[key]):
+                selected[key] = request
+        return [selected[key] for key in sorted(selected)]
+
+    @staticmethod
+    def _series_queue_evidence(series_id: int, records: list[dict]) -> dict:
+        def identifier(value):
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return None
+
+        def number(value):
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return None
+
+        def state(value):
+            return "".join(character for character in str(value or "").lower() if character.isalnum())
+
+        relevant = []
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            series = record.get("series") if isinstance(record.get("series"), dict) else {}
+            record_series_id = identifier(record.get("seriesId") if record.get("seriesId") is not None else series.get("id"))
+            if record_series_id != identifier(series_id):
+                continue
+            total, remaining = number(record.get("size")), number(record.get("sizeleft"))
+            percent = number(record.get("progress"))
+            if percent is None and total and remaining is not None:
+                percent = round((1 - float(remaining) / float(total)) * 100, 2)
+            episode_values = record.get("episodeIds")
+            episode_ids = list(episode_values) if isinstance(episode_values, (list, tuple)) else []
+            episode_ids += [record.get("episodeId")]
+            episode = record.get("episode") if isinstance(record.get("episode"), dict) else {}
+            episode_ids += [episode.get("id")]
+            episode_ids = sorted({item for value in episode_ids if (item := identifier(value)) is not None})
+            relevant.append({"download_id": record.get("downloadId"), "status": state(record.get("status")),
+                "tracked_state": state(record.get("trackedDownloadState") or record.get("trackedDownloadStatus")),
+                "episode_ids": episode_ids, "size": total, "size_left": remaining, "percent": percent})
+        active_states = {"downloading", "queued", "paused", "warning"}
+        import_states = {"completed", "importpending", "importing", "awaitingimport"}
+        relevant.sort(key=lambda item: (str(item["download_id"]), item["episode_ids"], item["status"], item["tracked_state"]))
+        states = [{item["status"], item["tracked_state"]} for item in relevant]
+        active = any(active_states & state for state in states)
+        completed = any(import_states & state for state in states)
+        priority = active_states, import_states
+        representative = next((item for stateset in priority for item in relevant if stateset & {item["status"], item["tracked_state"]}), relevant[0] if relevant else {})
+        representative_states = {representative.get("status", ""), representative.get("tracked_state", "")}
+        effective_status = next((candidate for stateset in priority for candidate in (representative.get("status"), representative.get("tracked_state")) if candidate in stateset and candidate in representative_states), representative.get("status"))
+        return {"active": active, "completed": completed, "records": relevant,
+                "status": effective_status, "percent": representative.get("percent")}
+
+    @staticmethod
+    def _resolve_tv_stage(series, progress, queue):
+        if series is None:
+            return PipelineStage.WAITING_FOR_SONARR, "Waiting for Sonarr."
+        if progress and progress.caught_up:
+            return PipelineStage.SERIES_CAUGHT_UP, "Every released episode is imported."
+        if queue.get("active"):
+            return PipelineStage.DOWNLOADING, "Sonarr download in progress."
+        if queue.get("completed"):
+            return PipelineStage.IMPORT_PENDING, "Waiting for Sonarr import."
+        return PipelineStage.SONARR_SEARCHING, "Waiting for Sonarr search activity."
 
     @staticmethod
     def _movie_arr_evidence(
