@@ -1,6 +1,7 @@
 """Safe, compact Discord presentation for normalized analysis models."""
 import discord
 from models.media_analysis import MovieAnalysis, SeriesAnalysis
+from services.analyze_service import distinct_release, safe_relative_path
 
 TITLE_LIMIT, DESCRIPTION_LIMIT, FIELD_NAME_LIMIT, FIELD_VALUE_LIMIT, EMBED_LIMIT = 256, 4096, 256, 1024, 6000
 OMITTED = "Additional analysis details omitted."
@@ -54,7 +55,9 @@ class AnalyzeView:
         AnalyzeView._add(embed,"File",[f"Size: {format_bytes(a.size_bytes)}"]+([f"Runtime: {int(a.runtime_minutes)//60}h {int(a.runtime_minutes)%60}m"] if a.runtime_minutes is not None else [])+([f"Storage Rate: {format_bytes(a.size_per_hour_bytes)}/hour"] if a.size_per_hour_bytes is not None else [])+([f"Estimated Bitrate: {a.estimated_total_bitrate_mbps:.1f} Mbps"] if a.estimated_total_bitrate_mbps is not None else []))
         video=[f"{k}: {v}" for k,v in (("Quality",a.quality),("Resolution",a.resolution),("Codec",a.video_codec),("Dynamic Range",a.video_dynamic_range)) if v]
         audio=[f"{k}: {v}" for k,v in (("Codec",a.audio_codec),("Channels",a.audio_channels),("Languages",", ".join(a.audio_languages) if a.audio_languages else None)) if v]
-        source=[f"{k}: {v}" for k,v in (("Filename",a.file_relative_path),("Release",a.original_release_name)) if v]
+        filename = safe_relative_path(a.file_relative_path)
+        release = distinct_release(filename, a.original_release_name)
+        source=[f"{k}: {v}" for k,v in (("Filename",filename),("Release",release)) if v]
         if video: AnalyzeView._add(embed,"Video",video,True)
         if audio: AnalyzeView._add(embed,"Audio",audio,True)
         if source: AnalyzeView._add(embed,"Source",source)

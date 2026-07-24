@@ -3,6 +3,7 @@ from collections import Counter, defaultdict
 from pathlib import PurePath
 import ntpath
 import hashlib
+import re
 from typing import Any
 from models.media_analysis import EpisodeFileAnalysis, MovieAnalysis, SeasonAnalysis, SeriesAnalysis
 from services.radarr_service import RadarrService
@@ -35,18 +36,52 @@ def quality(d):
  q=d.get('quality'); nested=q.get('quality') if isinstance(q,dict) else None
  return text(q) if isinstance(q,str) else (text(q.get('name')) if isinstance(q,dict) else None) or (text(nested.get('name')) if isinstance(nested,dict) else None) or text(d.get('qualityName'))
 def resolution(v):
- v=text(v)
- return f'{int(float(v))}p' if v and v.replace('.','',1).isdigit() and int(float(v)) in (480,576,720,1080,1440,2160,4320) else v
+ """Return a concise label for known vertical resolutions without guessing."""
+ value = text(v)
+ if not value:
+  return None
+ normalized = value.lower()
+ if re.fullmatch(r"\d+\s*p", normalized):
+  height = int(re.sub(r"\s*p$", "", normalized))
+ elif re.fullmatch(r"\d+(?:\.0+)?", normalized):
+  height = int(float(normalized))
+ else:
+  match = re.fullmatch(r"\d+\s*[xX]\s*(\d+)", value)
+  if not match:
+   return value
+  height = int(match.group(1))
+ for target, tolerance in ((4320, 20), (2160, 20), (1440, 20), (1080, 30), (720, 20), (576, 15), (480, 15)):
+  if abs(height - target) <= tolerance:
+   return f"{target}p"
+ return value
 def codec(v):
  v=text(v); x=v.lower().replace('.','') if v else ''
  return 'HEVC' if x in ('hevc','h265','x265') else ('H.264' if x in ('avc','h264','x264') else v)
 def field(d,*ks):
  for k in ks:
   if (v:=text(d.get(k))): return v
+LANGUAGE_NAMES = {
+ 'eng': 'English', 'en': 'English', 'english': 'English',
+ 'ger': 'German', 'deu': 'German', 'de': 'German', 'german': 'German',
+ 'spa': 'Spanish', 'es': 'Spanish', 'spanish': 'Spanish',
+ 'fre': 'French', 'fra': 'French', 'fr': 'French', 'french': 'French',
+ 'ita': 'Italian', 'it': 'Italian', 'italian': 'Italian',
+ 'jpn': 'Japanese', 'ja': 'Japanese', 'japanese': 'Japanese',
+ 'kor': 'Korean', 'ko': 'Korean', 'korean': 'Korean',
+ 'chi': 'Chinese', 'zho': 'Chinese', 'zh': 'Chinese', 'chinese': 'Chinese',
+ 'por': 'Portuguese', 'pt': 'Portuguese', 'portuguese': 'Portuguese',
+ 'rus': 'Russian', 'ru': 'Russian', 'russian': 'Russian',
+}
 def languages(v):
- if isinstance(v,str): v=v.split(',')
- if not isinstance(v,list): return []
- return sorted({x for item in v for x in ([text(item.get('name'))] if isinstance(item,dict) else [text(item)]) if x},key=str.lower)
+ """Normalize Radarr/Sonarr language forms into sorted readable names."""
+ items = v if isinstance(v, list) else [v]
+ values = []
+ for item in items:
+  raw = text(item.get('name')) if isinstance(item, dict) else text(item)
+  if raw:
+   values.extend(part.strip() for part in re.split(r'[/,]', raw) if part.strip())
+ normalized = {LANGUAGE_NAMES.get(value.casefold(), value) for value in values}
+ return sorted(normalized, key=lambda value: (value.casefold(), value))
 def channels(v):
  if isinstance(v,bool):return None
  if isinstance(v,(int,float)): return {2:'2.0',6:'5.1',8:'7.1'}.get(v)
@@ -72,6 +107,23 @@ def safe_relative_path(value: Any) -> str | None:
     return path
 
 
+def distinct_release(filename: Any, release: Any) -> str | None:
+    """Return a safe release label only when it differs from the filename."""
+    safe_release = safe_relative_path(release)
+    if not safe_release:
+        return None
+    safe_filename = safe_relative_path(filename)
+    if not safe_filename:
+        return safe_release
+    def comparable(value: str) -> str:
+        basename = ntpath.basename(value.replace('/', '\\'))
+        stem, extension = ntpath.splitext(basename)
+        if extension.casefold() in {'.mkv', '.mp4', '.avi', '.mov', '.m4v', '.ts', '.webm', '.wmv'}:
+            basename = stem
+        return basename.casefold()
+    return None if comparable(safe_filename) == comparable(safe_release) else safe_release
+
+
 def physical_file_key(file: dict, normalized: dict) -> str:
     path = normalized["path"]
     if path:
@@ -85,7 +137,8 @@ def physical_file_key(file: dict, normalized: dict) -> str:
 def fields(f):
  info=f.get('mediaInfo') if isinstance(f.get('mediaInfo'),dict) else {}; q=f.get('quality'); nq=q.get('quality') if isinstance(q,dict) and isinstance(q.get('quality'),dict) else {}
  path=safe_relative_path(field(f, 'relativePath', 'fileName'))
- return dict(size=size(f),quality=quality(f),resolution=resolution(field(info,'resolution','videoResolution') or field(f,'resolution') or text(nq.get('resolution'))),video_codec=codec(field(info,'videoCodec','videoFormat')),dynamic_range=field(info,'videoDynamicRange','videoDynamicRangeType','dynamicRange','hdrFormat'),audio_codec=field(info,'audioCodec','audioFormat'),audio_channels=channels(info.get('audioChannels',info.get('audioChannelPositions'))),audio_languages=languages(info.get('audioLanguages') or info.get('audioLanguage') or f.get('languages')),path=path,release=field(f,'sceneName','releaseTitle'))
+ release=distinct_release(path, field(f,'sceneName','releaseTitle'))
+ return dict(size=size(f),quality=quality(f),resolution=resolution(field(info,'resolution','videoResolution') or field(f,'resolution') or text(nq.get('resolution'))),video_codec=codec(field(info,'videoCodec','videoFormat')),dynamic_range=field(info,'videoDynamicRange','videoDynamicRangeType','dynamicRange','hdrFormat'),audio_codec=field(info,'audioCodec','audioFormat'),audio_channels=channels(info.get('audioChannels',info.get('audioChannelPositions'))),audio_languages=languages(info.get('audioLanguages') or info.get('audioLanguage') or f.get('languages')),path=path,release=release)
 def dist(entries,attr): return dict(sorted(Counter(getattr(x,attr) for x in entries if getattr(x,attr)).items(),key=lambda x:(-x[1],x[0])))
 def sums(entries):
  known=[x.size_bytes for x in entries if x.size_bytes is not None]; return (sum(known) if known else None,len(known),len(entries)-len(known),sum(known)/len(known) if known else None)

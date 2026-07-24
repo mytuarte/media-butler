@@ -25,3 +25,20 @@ class AnalyzeViewTests(unittest.TestCase):
     def test_bytes_none_and_zero_are_distinct(self):
         self.assertEqual(format_bytes(None), "Unavailable")
         self.assertEqual(format_bytes(0), "0 B")
+    def test_duplicate_release_is_not_presented_but_distinct_release_is(self):
+        duplicate = MovieAnalysis("movie", "Film", 2020, 1, 1, file_relative_path="Film.mkv", original_release_name=None)
+        duplicate_source = next(f.value for f in AnalyzeView.build(duplicate).fields if f.name == "Source")
+        self.assertEqual(duplicate_source, "Filename: Film.mkv")
+        distinct = MovieAnalysis("movie", "Film", 2020, 1, 1, file_relative_path="Film.mkv", original_release_name="Film.2160p-GROUP")
+        distinct_source = next(f.value for f in AnalyzeView.build(distinct).fields if f.name == "Source")
+        self.assertIn("Release: Film.2160p-GROUP", distinct_source)
+    def test_analyze_view_has_no_downgrade_verdict(self):
+        embed = AnalyzeView.build(MovieAnalysis("movie", "Film", 2020, 1, 1, resolution="2160p"))
+        self.assertNotIn("downgrade", str(embed.to_dict()).lower())
+    def test_view_sanitizes_absolute_source_paths(self):
+        analysis = MovieAnalysis("movie", "Film", 2020, 1, 1, file_relative_path="/media/Film.mkv", original_release_name=r"C:\releases\Film.2160p")
+        source = next(f.value for f in AnalyzeView.build(analysis).fields if f.name == "Source")
+        self.assertIn("Filename: Film.mkv", source)
+        self.assertIn("Release: Film.2160p", source)
+        self.assertNotIn("/media/", source)
+        self.assertNotIn("C:\\releases", source)
