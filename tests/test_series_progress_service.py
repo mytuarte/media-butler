@@ -27,6 +27,7 @@ class SeriesProgressServiceTests(unittest.TestCase):
         self.assertEqual(progress.released_episode_keys, ("S01E01", "S01E04"))
         self.assertEqual(progress.arr_imported_episode_keys, ("S01E01",))
         self.assertEqual(progress.missing_episode_keys, ("S01E04",))
+        self.assertEqual(progress.monitored_missing_episode_keys, ())
         self.assertFalse(progress.caught_up)
         self.assertEqual(sonarr.refreshes, [True])
 
@@ -36,3 +37,11 @@ class SeriesProgressServiceTests(unittest.TestCase):
         self.assertTrue(SeriesProgressService(FakeSonarr([
             {"seasonNumber": 1, "episodeNumber": 1, "airDate": "2020-01-01", "hasFile": True}
         ])).evaluate(1, now).caught_up)
+
+    def test_monitored_missing_episodes_are_additional_attention_data(self):
+        progress = SeriesProgressService(FakeSonarr([
+            {"seasonNumber": 1, "episodeNumber": 1, "airDate": "2020-01-01", "hasFile": False, "monitored": True},
+            {"seasonNumber": 1, "episodeNumber": 2, "airDate": "2020-01-01", "hasFile": False, "monitored": False},
+        ])).evaluate(1, datetime(2025, 1, 1, tzinfo=timezone.utc))
+        self.assertEqual(progress.monitored_missing_episode_keys, ("S01E01",))
+        self.assertFalse(progress.caught_up)

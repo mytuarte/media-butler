@@ -41,6 +41,8 @@ class MediaAttentionService:
         self.sonarr = sonarr or SonarrService()
         self.series_progress = SeriesProgressService(self.sonarr)
         self.tracked_media = self.state_store.load()
+        self.retired_tv_snapshots: list[PipelineSnapshot] = []
+        self.retired_tv_generations: dict[str, int] = {}
         self.last_requests_checked = 0
 
     def evaluate_requested_movies(
@@ -116,6 +118,7 @@ class MediaAttentionService:
     def evaluate_requested_tv(self, now: datetime | None = None) -> list[PipelineSnapshot]:
         """Evaluate each active TV request once, at series rather than episode scope."""
         now = now or datetime.now(timezone.utc)
+        self.retired_tv_snapshots = []
         requests = self.overseerr.get_requests().get("results", [])
         tv_requests = self._deduplicate_tv_requests(requests)
         if not tv_requests:
@@ -135,19 +138,34 @@ class MediaAttentionService:
             queue_evidence = {"active": False, "completed": False, "records": []}
             if series is not None:
                 progress = self.series_progress.evaluate(series["id"], now)
-                if not progress.released_episode_keys:
-                    continue
                 if queue is None:
                     queue = self.sonarr.get_queue()
                 queue_evidence = self._series_queue_evidence(series["id"], queue)
                 evidence.update({"id": series["id"]})
+                actionable = (
+                    bool(progress.monitored_missing_episode_keys)
+                    or queue_evidence["active"]
+                    or queue_evidence["completed"]
+                )
+                # Keep the normal caught-up snapshot for the weekly lifecycle.
+                # It is terminal, rather than an active acquisition snapshot.
+                if not progress.caught_up and not actionable:
+                    self.retired_tv_snapshots.append(PipelineSnapshot(
+                        media_key=self.tv_key(tmdb_id), media_type=MediaAttentionMediaType.TV,
+                        tmdb_id=tmdb_id, request_id=request["id"], title=title,
+                        stage=PipelineStage.SERIES_CAUGHT_UP,
+                        stage_detail="No released monitored episodes need acquisition.",
+                        arr_evidence=evidence, sab_evidence=queue_evidence,
+                        episode_progress=progress,
+                    ))
+                    continue
             stage, detail = self._resolve_tv_stage(series, progress, queue_evidence)
             snapshot = PipelineSnapshot(media_key=self.tv_key(tmdb_id), media_type=MediaAttentionMediaType.TV,
                 tmdb_id=tmdb_id, request_id=request["id"], title=title, stage=stage, stage_detail=detail,
                 arr_evidence=evidence, sab_evidence=queue_evidence, episode_progress=progress)
             self.evaluate_snapshot(snapshot, now)
             snapshots.append(snapshot)
-        if snapshots:
+        if snapshots or self.retired_tv_snapshots:
             self.state_store.save(self.tracked_media)
         return snapshots
 
@@ -206,6 +224,7 @@ class MediaAttentionService:
                 first_seen_at=now,
                 last_progress_at=now,
                 last_progress_fingerprint=snapshot.progress_fingerprint,
+                stall_generation=self.retired_tv_generations.pop(snapshot.media_key, 0),
             )
             return True
 
