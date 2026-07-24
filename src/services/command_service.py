@@ -1,4 +1,5 @@
 from commands.delete_command import DeleteCommand
+from commands.downgrade_command import DowngradeCommand
 from commands.analyze_command import AnalyzeCommand
 from commands.digital_command import DigitalCommand
 from commands.find_command import FindCommand
@@ -29,6 +30,7 @@ class CommandService:
         # Register commands
         self.register(AnalyzeCommand())
         self.register(DeleteCommand())
+        self.register(DowngradeCommand())
         self.register(DigitalCommand())
         self.register(FindCommand())
         self.register(InfoCommand())

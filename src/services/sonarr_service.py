@@ -251,3 +251,13 @@ class SonarrService:
                 return
 
         print(f'No series found matching "{title}"')
+
+    def manual_search(self, series_id: int) -> list[dict]:
+        """Return Sonarr's read-only manual-search releases for a series."""
+        response = requests.get(
+            f"{Config.SONARR_URL}/api/v3/release",
+            headers={"X-Api-Key": Config.SONARR_API_KEY},
+            params={"seriesId": series_id}, timeout=10,
+        )
+        response.raise_for_status()
+        return response.json()
