@@ -86,6 +86,18 @@ class SonarrService:
 
         return response.json()
 
+    def get_series_by_id(self, series_id: int) -> dict | None:
+        """Read the authoritative Sonarr record for a stable series ID."""
+        response = requests.get(
+            f"{Config.SONARR_URL}/api/v3/series/{series_id}",
+            headers={"X-Api-Key": Config.SONARR_API_KEY},
+            timeout=10,
+        )
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        return response.json()
+
     def test_connection(self):
         headers = {
             "X-Api-Key": Config.SONARR_API_KEY,
