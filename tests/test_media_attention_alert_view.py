@@ -35,11 +35,12 @@ class MediaAttentionAlertViewTests(unittest.TestCase):
         self.assertNotIn("SAB", str(embed.to_dict()))
 
     def test_normal_tv_progress_and_resolved_output_are_neutral(self):
-        progress = EpisodeProgress(("S01E01", "S01E02"), ("S01E01",))
+        progress = EpisodeProgress(("S01E01", "S01E02"), ("S01E01",), ("S01E02",))
         snapshot = tv_snapshot(progress, PipelineStage.DOWNLOADING)
         snapshot = PipelineSnapshot(**{key: getattr(snapshot, key) for key in (
             "media_key", "media_type", "tmdb_id", "request_id", "title", "stage", "stage_detail", "arr_evidence", "sab_evidence", "plex_evidence", "episode_progress")})
         embed = MediaAttentionAlertView.build(tv_alert(PipelineStage.DOWNLOADING), snapshot, 20)
         self.assertIn("Released Episodes: 2", str(embed.to_dict()))
+        self.assertIn("Monitored Missing Episodes: 1", str(embed.to_dict()))
         resolved = MediaAttentionAlertView.build_resolved(tv_alert(), tv_snapshot())
         self.assertNotIn("SAB", str(resolved.to_dict()))

@@ -10,7 +10,7 @@ class SeriesProgressService:
 
     def evaluate(self, series_id: int, now: datetime | None = None) -> EpisodeProgress:
         now = now or datetime.now(timezone.utc)
-        released, imported = [], []
+        released, imported, monitored = [], [], []
         # A progress decision must never be based on Sonarr's indefinite cache.
         for episode in self.sonarr.get_episodes(series_id, refresh=True):
             if episode.get("seasonNumber") == 0 or not self._released(episode, now):
@@ -19,7 +19,11 @@ class SeriesProgressService:
             released.append(key)
             if episode.get("hasFile") is True:
                 imported.append(key)
-        return EpisodeProgress(tuple(sorted(released)), tuple(sorted(imported)))
+            if episode.get("monitored") is True:
+                monitored.append(key)
+        return EpisodeProgress(
+            tuple(sorted(released)), tuple(sorted(imported)), tuple(sorted(monitored))
+        )
 
     @staticmethod
     def episode_key(episode: dict) -> str:

@@ -28,11 +28,19 @@ class PipelineStage(Enum):
 class EpisodeProgress:
     released_episode_keys: tuple[str, ...] = ()
     arr_imported_episode_keys: tuple[str, ...] = ()
+    monitored_episode_keys: tuple[str, ...] = ()
     plex_episode_keys: tuple[str, ...] = ()
 
     @property
     def missing_episode_keys(self) -> tuple[str, ...]:
         return tuple(key for key in self.released_episode_keys if key not in self.arr_imported_episode_keys)
+
+    @property
+    def monitored_missing_episode_keys(self) -> tuple[str, ...]:
+        """Released missing episodes Sonarr is currently expected to acquire."""
+        return tuple(
+            key for key in self.missing_episode_keys if key in self.monitored_episode_keys
+        )
 
     @property
     def released_count(self) -> int:
@@ -51,6 +59,8 @@ class EpisodeProgress:
             "released_episode_keys": list(self.released_episode_keys),
             "arr_imported_episode_keys": list(self.arr_imported_episode_keys),
             "missing_episode_keys": list(self.missing_episode_keys),
+            "monitored_episode_keys": list(self.monitored_episode_keys),
+            "monitored_missing_episode_keys": list(self.monitored_missing_episode_keys),
             "released_count": self.released_count,
             "imported_released_count": self.imported_released_count,
             "caught_up": self.caught_up,

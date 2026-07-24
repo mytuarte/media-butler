@@ -51,6 +51,8 @@ class MediaAttentionMonitorService:
             if tracked is not None and tracked.stall_generation < generation:
                 tracked.stall_generation = generation
                 changed = True
+            elif tracked is None:
+                self.attention_service.retired_tv_generations[media_key] = generation
         if changed:
             self.attention_service.state_store.save(
                 self.attention_service.tracked_media
@@ -84,6 +86,7 @@ class MediaAttentionMonitorService:
                 logger.exception("Media Attention %s evaluation failed", media_type)
         for snapshot in snapshots:
             await self._evaluate_snapshot(snapshot, now)
+        await self._retire_inactive_tv(now)
         self.alert_store.save(self.alerts)
         active_count = sum(alert.status == "active" for alert in self.alerts.values())
         logger.debug(
@@ -93,6 +96,26 @@ class MediaAttentionMonitorService:
             active_count,
         )
         return snapshots
+
+    async def _retire_inactive_tv(self, now: datetime) -> None:
+        """Resolve obsolete TV alerts and discard their old stall timers.
+
+        The TV evaluator deliberately does not return snapshots for series with no
+        monitored missing episodes or queue activity, so they cannot begin a stall
+        window.  An existing alert still needs the normal resolution path.
+        """
+        for snapshot in self.attention_service.retired_tv_snapshots:
+            active = self._active_alert(snapshot.media_key)
+            if active is not None:
+                active.status = "resolved"
+                active.resolved_at = now
+                await self._update_resolved_alert(active, snapshot)
+                logger.info("Media Attention resolved alert %s for %s", active.media_key, snapshot.title)
+            tracked = self.attention_service.tracked_media.pop(snapshot.media_key, None)
+            if tracked is not None:
+                self.attention_service.retired_tv_generations[snapshot.media_key] = tracked.stall_generation
+        if self.attention_service.retired_tv_snapshots:
+            self.attention_service.state_store.save(self.attention_service.tracked_media)
 
     async def _evaluate_snapshot(
         self, snapshot: PipelineSnapshot, now: datetime

@@ -418,13 +418,79 @@ class WeeklyTvLifecycleTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(discord.sent), 1)
             self.assertIn("Unavailable until the series reaches Sonarr", str(discord.sent[0][1].episode_progress) if discord.sent[0][1].episode_progress else "Unavailable until the series reaches Sonarr")
             sonarr.series = [{"id": 90, "tmdbId": 9, "title": "Weekly"}]
-            sonarr.episodes = [{"id": 101, "seasonNumber": 1, "episodeNumber": 1, "airDateUtc": "2026-07-01T00:00:00Z", "hasFile": False}]
+            sonarr.episodes = [{"id": 101, "seasonNumber": 1, "episodeNumber": 1, "airDateUtc": "2026-07-01T00:00:00Z", "hasFile": False, "monitored": True}]
             appeared = next(item for item in await monitor.run_cycle(now + timedelta(minutes=6)) if item.media_key == "tv:tmdb:9")
             self.assertEqual(appeared.stage, PipelineStage.SONARR_SEARCHING)
             self.assertIsNotNone(appeared.episode_progress)
             self.assertFalse(any(alert.status == "active" for alert in monitor.alerts.values()))
         finally:
             Config.MEDIA_ATTENTION_TV_STALL_MINUTES = previous
+            temp.cleanup()
+
+    async def test_unmonitored_release_is_skipped_then_monitored_release_gets_fresh_timer(self):
+        temp = tempfile.TemporaryDirectory()
+        previous = Config.MEDIA_ATTENTION_TV_STALL_MINUTES
+        Config.MEDIA_ATTENTION_TV_STALL_MINUTES = 5
+        try:
+            start = datetime(2026, 7, 21, 12, tzinfo=timezone.utc)
+            sonarr = MutableSonarr([
+                {"id": 101, "seasonNumber": 1, "episodeNumber": 1, "airDateUtc": "2026-07-01T00:00:00Z", "hasFile": True, "monitored": True},
+                {"id": 102, "seasonNumber": 1, "episodeNumber": 2, "airDateUtc": "2026-07-21T12:00:00Z", "hasFile": False, "monitored": False},
+            ])
+            attention = MediaAttentionService(MediaAttentionStateStore(Path(temp.name) / "tracking.json"), FakeOverseerrService([{"id": 9, "type": "tv", "status": 2, "media": {"tmdbId": 9, "title": "Weekly"}}]), FakeRadarrService(), TvTmdb(True), FakeSabnzbdClient(), FakePlexService(), sonarr)
+            discord = FakeDiscord()
+            monitor = MediaAttentionMonitorService(attention, MediaAttentionAlertStore(Path(temp.name) / "alerts.json"), discord)
+            self.assertEqual(await monitor.run_cycle(start), [])
+            self.assertNotIn("tv:tmdb:9", attention.tracked_media)
+            self.assertEqual(await monitor.run_cycle(start + timedelta(hours=1)), [])
+            sonarr.episodes[1]["monitored"] = True
+            actionable_at = start + timedelta(hours=1, minutes=1)
+            snapshot = (await monitor.run_cycle(actionable_at))[0]
+            self.assertEqual(snapshot.stage, PipelineStage.SONARR_SEARCHING)
+            self.assertEqual(attention.tracked_media[snapshot.media_key].last_progress_at, actionable_at)
+            await monitor.run_cycle(actionable_at + timedelta(minutes=4))
+            self.assertEqual(discord.sent, [])
+            await monitor.run_cycle(actionable_at + timedelta(minutes=5))
+            self.assertEqual(len(discord.sent), 1)
+            sonarr.episodes[1]["monitored"] = False
+            await monitor.run_cycle(actionable_at + timedelta(minutes=6))
+            self.assertTrue(any(alert.status == "resolved" for alert in monitor.alerts.values()))
+            self.assertNotIn("tv:tmdb:9", attention.tracked_media)
+            sonarr.episodes[1]["monitored"] = True
+            fresh_at = actionable_at + timedelta(hours=1)
+            await monitor.run_cycle(fresh_at)
+            self.assertEqual(attention.tracked_media["tv:tmdb:9"].last_progress_at, fresh_at)
+            await monitor.run_cycle(fresh_at + timedelta(minutes=5))
+            self.assertEqual(len(discord.sent), 2)
+            sonarr.episodes[1]["hasFile"] = True
+            await monitor.run_cycle(fresh_at + timedelta(minutes=6))
+            self.assertEqual(sum(alert.status == "resolved" for alert in monitor.alerts.values()), 2)
+        finally:
+            Config.MEDIA_ATTENTION_TV_STALL_MINUTES = previous
+            temp.cleanup()
+
+    async def test_legacy_partial_series_is_skipped_and_queue_remains_actionable(self):
+        temp = tempfile.TemporaryDirectory()
+        try:
+            now = datetime(2026, 7, 21, 12, tzinfo=timezone.utc)
+            episodes = [
+                {"id": number, "seasonNumber": 1, "episodeNumber": number, "airDateUtc": "2020-01-01T00:00:00Z", "hasFile": number <= 3, "monitored": False}
+                for number in range(1, 196)
+            ]
+            sonarr = MutableSonarr(episodes)
+            sonarr.series[0]["monitored"] = True
+            attention = MediaAttentionService(MediaAttentionStateStore(Path(temp.name) / "tracking.json"), FakeOverseerrService([{"id": 9, "type": "tv", "status": 2, "media": {"tmdbId": 9, "title": "Legacy"}}]), FakeRadarrService(), TvTmdb(True), FakeSabnzbdClient(), FakePlexService(), sonarr)
+            self.assertEqual(attention.evaluate_requested_tv(now), [])
+            sonarr.episodes[3]["monitored"] = True
+            searching = attention.evaluate_requested_tv(now)
+            self.assertEqual(searching[0].stage, PipelineStage.SONARR_SEARCHING)
+            self.assertEqual(searching[0].episode_progress.imported_released_count, 3)
+            self.assertEqual(searching[0].episode_progress.monitored_missing_episode_keys, ("S01E04",))
+            sonarr.episodes[3]["monitored"] = False
+            sonarr.queue = [{"seriesId": 90, "episodeId": 4, "status": "downloading"}]
+            downloading = attention.evaluate_requested_tv(now)
+            self.assertEqual(downloading[0].stage, PipelineStage.DOWNLOADING)
+        finally:
             temp.cleanup()
 
     async def test_real_weekly_release_lifecycle_uses_tv_evaluator(self):
@@ -434,8 +500,8 @@ class WeeklyTvLifecycleTests(unittest.IsolatedAsyncioTestCase):
         try:
             start = datetime(2026, 7, 21, 12, tzinfo=timezone.utc)
             sonarr = MutableSonarr([
-                {"id": 101, "seasonNumber": 1, "episodeNumber": 1, "airDateUtc": "2026-07-01T00:00:00Z", "hasFile": True},
-                {"id": 102, "seasonNumber": 1, "episodeNumber": 2, "airDateUtc": "2026-07-21T13:00:00Z", "hasFile": False},
+                {"id": 101, "seasonNumber": 1, "episodeNumber": 1, "airDateUtc": "2026-07-01T00:00:00Z", "hasFile": True, "monitored": True},
+                {"id": 102, "seasonNumber": 1, "episodeNumber": 2, "airDateUtc": "2026-07-21T13:00:00Z", "hasFile": False, "monitored": True},
             ])
             attention = MediaAttentionService(
                 MediaAttentionStateStore(Path(temp.name) / "tracking.json"),
@@ -488,7 +554,7 @@ class WeeklyTvLifecycleTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(caught.stage, PipelineStage.SERIES_CAUGHT_UP)
             self.assertEqual(caught.episode_progress.arr_imported_episode_keys, ("S01E01", "S01E02"))
 
-            sonarr.episodes.append({"id": 103, "seasonNumber": 1, "episodeNumber": 3, "airDateUtc": "2026-07-22T00:00:00Z", "hasFile": False})
+            sonarr.episodes.append({"id": 103, "seasonNumber": 1, "episodeNumber": 3, "airDateUtc": "2026-07-22T00:00:00Z", "hasFile": False, "monitored": True})
             self.assertEqual(next(item for item in await monitor.run_cycle(progressed_at + timedelta(minutes=2) ) if item.media_key == key).stage, PipelineStage.SERIES_CAUGHT_UP)
             third_release = datetime(2026, 7, 22, 0, 1, tzinfo=timezone.utc)
             third = next(item for item in await monitor.run_cycle(third_release) if item.media_key == key)

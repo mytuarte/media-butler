@@ -45,7 +45,7 @@ class MediaAttentionAlertView:
         episode_detail = (
             f"Released Episodes: {progress.released_count}\n"
             f"Downloaded Episodes: {progress.imported_released_count}\n"
-            f"Missing Episodes: {len(progress.missing_episode_keys)}"
+            f"Monitored Missing Episodes: {len(progress.monitored_missing_episode_keys)}"
             if progress is not None
             else "Unavailable until the series reaches Sonarr."
         )
