@@ -32,6 +32,7 @@ class MediaAttentionMonitorService:
         self.tv_stall_threshold = timedelta(minutes=Config.MEDIA_ATTENTION_TV_STALL_MINUTES)
         self.running = False
         self._task = None
+        self._cycle_lock = asyncio.Lock()
 
     def _restore_stall_generations(self) -> None:
         """Keep tracking generation ahead of persisted alert generations."""
@@ -74,28 +75,32 @@ class MediaAttentionMonitorService:
             await asyncio.sleep(self.interval_seconds)
 
     async def run_cycle(self, now: datetime | None = None) -> list[PipelineSnapshot]:
-        now = now or datetime.now(timezone.utc)
-        snapshots = []
-        for media_type, evaluator in (
-            ("movie", self.attention_service.evaluate_requested_movies),
-            ("TV", self.attention_service.evaluate_requested_tv),
-        ):
-            try:
-                snapshots.extend(evaluator(now))
-            except Exception:
-                logger.exception("Media Attention %s evaluation failed", media_type)
-        for snapshot in snapshots:
-            await self._evaluate_snapshot(snapshot, now)
-        await self._retire_inactive_tv(now)
-        self.alert_store.save(self.alerts)
-        active_count = sum(alert.status == "active" for alert in self.alerts.values())
-        logger.debug(
-            "Media Attention cycle: requests checked=%s eligible=%s active attention=%s",
-            self.attention_service.last_requests_checked,
-            len(snapshots),
-            active_count,
-        )
-        return snapshots
+        # Evaluators share tracked state and service caches, so deliberately run
+        # them one at a time.  The lock also protects callers that invoke
+        # run_cycle directly in addition to the scheduled monitor task.
+        async with self._cycle_lock:
+            now = now or datetime.now(timezone.utc)
+            snapshots = []
+            for media_type, evaluator in (
+                ("movie", self.attention_service.evaluate_requested_movies),
+                ("TV", self.attention_service.evaluate_requested_tv),
+            ):
+                try:
+                    snapshots.extend(await asyncio.to_thread(evaluator, now))
+                except Exception:
+                    logger.exception("Media Attention %s evaluation failed", media_type)
+            for snapshot in snapshots:
+                await self._evaluate_snapshot(snapshot, now)
+            await self._retire_inactive_tv(now)
+            await asyncio.to_thread(self.alert_store.save, self.alerts)
+            active_count = sum(alert.status == "active" for alert in self.alerts.values())
+            logger.debug(
+                "Media Attention cycle: requests checked=%s eligible=%s active attention=%s",
+                self.attention_service.last_requests_checked,
+                len(snapshots),
+                active_count,
+            )
+            return snapshots
 
     async def _retire_inactive_tv(self, now: datetime) -> None:
         """Resolve obsolete TV alerts and discard their old stall timers.
@@ -115,7 +120,10 @@ class MediaAttentionMonitorService:
             if tracked is not None:
                 self.attention_service.retired_tv_generations[snapshot.media_key] = tracked.stall_generation
         if self.attention_service.retired_tv_snapshots:
-            self.attention_service.state_store.save(self.attention_service.tracked_media)
+            await asyncio.to_thread(
+                self.attention_service.state_store.save,
+                self.attention_service.tracked_media,
+            )
 
     async def _evaluate_snapshot(
         self, snapshot: PipelineSnapshot, now: datetime

@@ -1,6 +1,8 @@
 import asyncio
 import json
 import tempfile
+import threading
+import time
 import unittest
 from datetime import datetime
 from pathlib import Path
@@ -63,6 +65,7 @@ class HealthMonitorServiceTests(unittest.TestCase):
         for name, value in self.previous_qbittorrent_settings.items():
             setattr(Config, name, value)
         self.temporary_directory.cleanup()
+
 
     def create_monitor(self):
         monitor = HealthMonitorService()
@@ -880,3 +883,30 @@ class HealthMonitorServiceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HealthMonitorAsyncTests(unittest.IsolatedAsyncioTestCase):
+    async def test_slow_check_does_not_block_event_loop(self):
+        monitor = HealthMonitorService()
+        monitor.running = True
+        coroutine_ran = threading.Event()
+        previous_interval = Config.HEALTH_MONITOR_INTERVAL_SECONDS
+        Config.HEALTH_MONITOR_INTERVAL_SECONDS = 0.001
+
+        def slow_check():
+            time.sleep(0.05)
+            self.assertTrue(coroutine_ran.is_set())
+            return []
+
+        async def responsive_coroutine():
+            await asyncio.sleep(0.01)
+            coroutine_ran.set()
+
+        try:
+            monitor.check = slow_check
+            monitor._process_issues = AsyncMock(
+                side_effect=lambda _: setattr(monitor, "running", False)
+            )
+            await asyncio.gather(monitor._monitor_loop(), responsive_coroutine())
+        finally:
+            Config.HEALTH_MONITOR_INTERVAL_SECONDS = previous_interval
