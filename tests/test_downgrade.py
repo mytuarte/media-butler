@@ -27,6 +27,57 @@ class DowngradeServiceTests(unittest.TestCase):
         candidates = DowngradeService(Mock(manual_search=Mock(return_value=releases)), Mock()).candidates(self.media(), MovieAnalysis("movie", "Film", 2020, 100, 1))
         self.assertEqual(candidates, [])
 
+    def test_movie_accepts_mixed_languages_when_english_is_present(self):
+        releases = [
+            release(20, languages=["German", "English"]),
+            release(30, languages=["English", "French"]),
+        ]
+        candidates = DowngradeService(
+            Mock(manual_search=Mock(return_value=releases)), Mock()
+        ).candidates(self.media(), MovieAnalysis("movie", "Film", 2020, 100, 1))
+        self.assertEqual([candidate.languages for candidate in candidates], [
+            ["English", "French"],
+            ["English", "German"],
+        ])
+
+    def test_movie_rejects_missing_or_non_english_languages(self):
+        releases = [
+            release(20, languages=["German"]),
+            release(30, languages=["French", "Spanish"]),
+            {"size": 40, "resolution": "1080p", "languages": [], "releaseTitle": "Film.1080p.WEB-DL"},
+            {"size": 50, "resolution": "1080p", "releaseTitle": "Film.1080p.WEB-DL"},
+        ]
+        candidates = DowngradeService(
+            Mock(manual_search=Mock(return_value=releases)), Mock()
+        ).candidates(self.media(), MovieAnalysis("movie", "Film", 2020, 100, 1))
+        self.assertEqual(candidates, [])
+
+    def test_normalizes_language_aliases_before_requiring_english(self):
+        candidate = DowngradeService._normalize(
+            release(20, languages=["eng"]), "Film", 100, 1080
+        )
+        self.assertEqual(candidate.languages, ["English"])
+
+    def test_infers_codec_from_release_title_when_video_codec_is_missing(self):
+        for title, expected in (
+            ("Film.2160p.WEB-DL.HEVC-GROUP", "HEVC"),
+            ("Film.2160p.WEB-DL.H265-GROUP", "HEVC"),
+            ("Film.2160p.WEB-DL.H.265-GROUP", "HEVC"),
+            ("Film.2160p.WEB-DL.x265-GROUP", "HEVC"),
+            ("Film.1080p.WEB-DL.AVC-GROUP", "AVC"),
+            ("Film.1080p.WEB-DL.H264-GROUP", "AVC"),
+            ("Film.1080p.WEB-DL.H.264-GROUP", "AVC"),
+            ("Film.1080p.WEB-DL.x264-GROUP", "AVC"),
+            ("Film.1080p.WEB-DL.AV1-GROUP", "AV1"),
+        ):
+            with self.subTest(title=title):
+                candidate = DowngradeService._normalize(release(20, title=title), "Film", 100, 1080)
+                self.assertEqual(candidate.video_codec, expected)
+
+    def test_uses_unknown_when_codec_cannot_be_determined(self):
+        candidate = DowngradeService._normalize(release(20), "Film", 100, 1080)
+        self.assertEqual(candidate.video_codec, "Unknown")
+
     def test_tv_allows_720p(self):
         sonarr = Mock(manual_search=Mock(return_value=[release(20, "720p")]))
         candidates = DowngradeService(Mock(), sonarr).candidates(self.media("series"), SeriesAnalysis("series", "Film", 2020, 100, 1))
@@ -44,11 +95,20 @@ class DowngradeUiTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("downgrade", CommandService().commands)
 
     def test_candidate_view_and_confirmation_screen(self):
-        candidate = DowngradeService._normalize(release(40), "Film", 100, 1080)
+        candidate = DowngradeService._normalize(
+            release(40, quality={"quality": {"name": "WEB-DL-1080p"}}),
+            "Film",
+            100,
+            1080,
+        )
         embed = DowngradeView.build("Film", 100, "Remux-2160p", [candidate])
         self.assertEqual(embed.title, "♻ Replacement Candidates")
+        self.assertIn("WEB-DL-1080p", embed.fields[1].value)
+        self.assertNotIn("WEB-DL-1080p 1080p", embed.fields[1].value)
         confirmation = DowngradeView.confirmation_embed("Film", 100, "Remux-2160p", candidate)
         self.assertEqual(confirmation.title, "Replace Film?")
+        self.assertEqual(confirmation.fields[2].name, "Release")
+        self.assertEqual(confirmation.fields[2].value, "Film.1080p.WEB-DL")
 
     async def test_confirm_performs_no_write_action(self):
         candidate = DowngradeService._normalize(release(40), "Film", 100, 1080)
