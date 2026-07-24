@@ -24,7 +24,7 @@ class DowngradeView(discord.ui.View):
         if candidates:
             lines = []
             for number, candidate in enumerate(candidates, 1):
-                quality = " ".join(value for value in (candidate.quality, candidate.resolution) if value) or "Unknown"
+                quality = candidate.quality or "Unknown"
                 lines.append(f"**{number}. {format_bytes(candidate.size_bytes)}**\n{quality}\n{candidate.video_codec or 'Unknown codec'} · {', '.join(candidate.languages) or 'Unknown languages'}\nSaves {format_bytes(candidate.savings_bytes)} ({candidate.savings_percent}%)")
             embed.add_field(name="Candidates", value="\n\n".join(lines), inline=False)
         else:
@@ -43,10 +43,11 @@ class DowngradeView(discord.ui.View):
 
     @staticmethod
     def confirmation_embed(title, current_size, current_quality, candidate):
-        quality = " ".join(value for value in (candidate.quality, candidate.resolution) if value) or "Unknown"
+        quality = candidate.quality or "Unknown"
         embed = discord.Embed(title=f"Replace {title}?")
         embed.add_field(name="Current", value=f"{format_bytes(current_size)}\n{current_quality or 'Unknown'}", inline=False)
         embed.add_field(name="New", value=f"{format_bytes(candidate.size_bytes)}\n{quality}", inline=False)
+        embed.add_field(name="Release", value=candidate.release_name or "Unknown", inline=False)
         embed.add_field(name="Recover", value=format_bytes(candidate.savings_bytes), inline=False)
         return embed
 

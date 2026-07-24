@@ -1,11 +1,12 @@
 """Read-only discovery of smaller Arr manual-search releases."""
 
 from collections import Counter
+import re
 from typing import Any
 
 from models.downgrade import ReplacementCandidate
 from models.media_analysis import MediaAnalysis
-from services.analyze_service import codec, quality, size, text
+from services.analyze_service import languages, quality, size, text
 from services.log_service import logger
 from services.radarr_service import RadarrService
 from services.sonarr_service import SonarrService
@@ -79,23 +80,24 @@ def _extract_languages(release: dict[str, Any]) -> list[str]:
     """Normalize Arr language objects and strings into unique names."""
     raw_languages = release.get("languages") or release.get("language") or []
 
-    if not isinstance(raw_languages, list):
-        raw_languages = [raw_languages]
+    return languages(raw_languages)
 
-    normalized: list[str] = []
 
-    for language in raw_languages:
-        language_name = None
+def _video_codec(release: dict[str, Any], release_name: str | None) -> str:
+    """Return a supported codec, inferring it from a release title when needed."""
+    raw_codec = text(release.get("videoCodec")) or text(release.get("videoFormat"))
+    source = raw_codec or release_name or ""
 
-        if isinstance(language, dict):
-            language_name = text(language.get("name"))
-        else:
-            language_name = text(language)
+    if re.search(r"(?<![a-z0-9])(?:hevc|h[ .]?265|x265)(?![a-z0-9])", source, re.I):
+        return "HEVC"
 
-        if language_name and language_name not in normalized:
-            normalized.append(language_name)
+    if re.search(r"(?<![a-z0-9])(?:avc|h[ .]?264|x264)(?![a-z0-9])", source, re.I):
+        return "AVC"
 
-    return normalized
+    if re.search(r"(?<![a-z0-9])av1(?![a-z0-9])", source, re.I):
+        return "AV1"
+
+    return "Unknown"
 
 
 def _extract_rejections(release: dict[str, Any]) -> list[str]:
@@ -259,8 +261,6 @@ class DowngradeService:
         if not raw_quality:
             raw_quality = text(quality_data.get("name"))
 
-        raw_codec = release.get("videoCodec") or release.get("videoFormat")
-
         score = release.get("customFormatScore")
 
         score = (
@@ -275,7 +275,7 @@ class DowngradeService:
                 size_bytes=candidate_size,
                 quality=raw_quality,
                 resolution=_resolution_label(raw_resolution),
-                video_codec=codec(raw_codec),
+                video_codec=_video_codec(release, release_name),
                 languages=candidate_languages,
                 indexer=text(release.get("indexer")),
                 protocol=text(release.get("protocol")),
