@@ -204,3 +204,13 @@ class RadarrService:
         if not isinstance(payload, dict):
             raise ValueError("Radarr movie response must be an object")
         return payload
+
+    def manual_search(self, movie_id: int) -> list[dict]:
+        """Return Radarr's read-only manual-search releases for a movie."""
+        response = requests.get(
+            f"{Config.RADARR_URL}/api/v3/release",
+            headers={"X-Api-Key": Config.RADARR_API_KEY},
+            params={"movieId": movie_id}, timeout=10,
+        )
+        response.raise_for_status()
+        return response.json()
