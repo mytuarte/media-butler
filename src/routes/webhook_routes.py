@@ -15,6 +15,7 @@ def initialize(
     discord_service,
     radarr_service,
     sonarr_service,
+    series_completion_notification_service=None,
 ):
     @webhook_routes.post("/radarr")
     def radarr():
@@ -48,28 +49,13 @@ def initialize(
     @webhook_routes.post("/sonarr")
     def sonarr():
         logger.info("Received Sonarr webhook.")
-
-        payload = request.json
-
-        series = payload.get("series", {})
-        logger.info(
-            f"Series: {series.get('title')} ({series.get('year')}) "
-            f"TMDb: {series.get('tmdbId')}"
-        )
-
-        notification = sonarr_service.parse_notification(payload)
-
-        logger.info(f"Requester resolved to: {notification.requester}")
-
-        logger.info("Sending Discord notification...")
-
+        payload = request.get_json(silent=True) or {}
+        if series_completion_notification_service is None:
+            logger.warning("Ignoring Sonarr webhook: series completion service is unavailable.")
+            return "", 200
         future = asyncio.run_coroutine_threadsafe(
-            notification_service.send_movie_notification(notification),
+            series_completion_notification_service.process(payload),
             discord_service.client.loop,
         )
-
-        future.result(timeout=10)
-
-        logger.info("Sonarr episode notification sent for %s", notification.title)
-
+        future.result(timeout=35)
         return "", 200

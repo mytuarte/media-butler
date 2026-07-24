@@ -25,6 +25,7 @@ from services.registry import services
 from services.search.sonarr_search_service import SonarrSearchService
 from services.search_channel_service import SearchChannelService
 from services.sonarr_service import SonarrService
+from services.series_completion_notification_service import SeriesCompletionNotificationService
 from services.trending_movies_service import TrendingMoviesService
 from services.trending_tv_service import TrendingTvService
 from services.upcoming_movie_watchlist_service import UpcomingMovieWatchlistService
@@ -41,6 +42,9 @@ services.radarr = RadarrService()
 services.sonarr = SonarrService()
 services.sonarr_search = SonarrSearchService()
 services.overseerr = OverseerrService()
+services.series_completion_notifications = SeriesCompletionNotificationService(
+    services.sonarr, services.overseerr, services.notification
+)
 
 services.delete_confirmation = DeleteConfirmationService()
 services.delete = DeleteService()
@@ -61,6 +65,7 @@ initialize_webhook_routes(
     services.discord,
     services.radarr,
     services.sonarr,
+    services.series_completion_notifications,
 )
 
 

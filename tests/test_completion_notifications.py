@@ -196,7 +196,7 @@ class CompletionNotificationTests(unittest.TestCase):
         self.assertIn("Plex notifications channel 8 is unavailable", logs.output[0])
         self.assertEqual(general_channel.messages, [])
 
-    def test_completion_webhooks_send_one_notification_for_string_quality(self):
+    def test_radarr_webhook_still_sends_movie_notification_when_sonarr_service_is_unconfigured(self):
         app = Flask(__name__)
         notifications = []
 
@@ -233,9 +233,8 @@ class CompletionNotificationTests(unittest.TestCase):
 
         self.assertEqual(radarr_response.status_code, 200)
         self.assertEqual(sonarr_response.status_code, 200)
-        self.assertEqual(len(notifications), 2)
+        self.assertEqual(len(notifications), 1)
         self.assertEqual(notifications[0].quality, "Bluray-2160p")
-        self.assertEqual(notifications[1].quality, "WEBDL-1080p")
 
 
 if __name__ == "__main__":

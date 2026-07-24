@@ -5,6 +5,8 @@ import discord
 from config import Config
 from models.health_issue import HealthIssue
 from models.notification import MovieNotification
+from models.series_completion_notification import SeriesCompletionNotification
+from views.series_completion_notification_view import SeriesCompletionNotificationView
 from services.command_service import CommandService
 from services.log_service import logger
 from services.registry import services
@@ -137,6 +139,24 @@ class DiscordService:
             raise
 
         logger.info(f"Discord notification sent for '{movie.title}'.")
+
+    @staticmethod
+    def _valid_discord_user_id(value: object) -> bool:
+        return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+    async def send_series_completion_notification(
+        self, notification: SeriesCompletionNotification
+    ):
+        channel = self.client.get_channel(Config.DISCORD_PLEX_NOTIFICATIONS_CHANNEL_ID)
+        if channel is None:
+            logger.error("Plex notifications channel %s is unavailable.", Config.DISCORD_PLEX_NOTIFICATIONS_CHANNEL_ID)
+            raise RuntimeError("Plex notifications channel not found.")
+        content = (
+            f"<@{notification.requester_discord_id}>"
+            if self._valid_discord_user_id(notification.requester_discord_id) else None
+        )
+        await channel.send(content=content, embed=SeriesCompletionNotificationView.build(notification))
+        logger.info("Discord series completion notification sent for '%s'.", notification.title)
 
     async def send_embed(
         self,

@@ -1,5 +1,6 @@
 from config import Config
 from models.notification import MovieNotification
+from models.series_completion_notification import SeriesCompletionNotification
 from services.discord_service import DiscordService
 
 
@@ -9,6 +10,11 @@ class NotificationService:
 
     async def send_movie_notification(self, movie: MovieNotification):
         await self.discord_service.send_movie_notification(movie)
+
+    async def send_series_completion_notification(
+        self, notification: SeriesCompletionNotification
+    ):
+        await self.discord_service.send_series_completion_notification(notification)
 
     async def send_test_notification(self):
         movie = MovieNotification(
