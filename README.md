@@ -288,3 +288,11 @@ https://github.com/mytuarte
 ---
 
 Media Butler is a personal project built to simplify media automation and notifications for Plex-based home servers.
+
+## Admin analysis command
+
+`!analyze <title>` is an admin-only, read-only technical and storage inspection
+for a selected movie or TV series. It reports the files currently recorded by
+Radarr or Sonarr, without searching for replacements or modifying media,
+monitoring, quality profiles, or downloads. `!downgrade` is future work and will
+build on this analysis foundation.
