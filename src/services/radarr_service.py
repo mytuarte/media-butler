@@ -189,3 +189,18 @@ class RadarrService:
                 return
 
         print(f'No movie found matching "{title}"')
+
+    def get_movie_by_id(self, movie_id: int) -> dict | None:
+        """Read one Radarr movie record; analysis must not scan the library."""
+        response = requests.get(
+            f"{Config.RADARR_URL}/api/v3/movie/{movie_id}",
+            headers={"X-Api-Key": Config.RADARR_API_KEY},
+            timeout=10,
+        )
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise ValueError("Radarr movie response must be an object")
+        return payload
