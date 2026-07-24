@@ -52,6 +52,7 @@ class HealthMonitorService:
 
         self._task = None
         self.running = False
+        self._check_lock = asyncio.Lock()
 
     def start(self):
         if self.running:
@@ -68,7 +69,11 @@ class HealthMonitorService:
     async def _monitor_loop(self):
         while self.running:
             try:
-                issues = self.check()
+                # The checks make synchronous network and filesystem calls.  Keep
+                # those calls away from discord.py's event loop, while retaining
+                # issue processing (and its Discord API calls) on the loop.
+                async with self._check_lock:
+                    issues = await asyncio.to_thread(self.check)
 
                 await self._process_issues(
                     issues,

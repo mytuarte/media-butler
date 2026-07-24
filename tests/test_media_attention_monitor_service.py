@@ -1,9 +1,13 @@
+import asyncio
 import json
 import copy
+import threading
+import time
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 from config import Config
 from services.media_attention_alert_store import MediaAttentionAlertStore
@@ -390,6 +394,60 @@ class EvaluatorIsolationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(store.saved), 1)
         temp.cleanup()
 
+    async def test_slow_movie_evaluator_does_not_block_coroutines(self):
+        temp, service = self._attention_with_snapshot(PipelineSnapshot("movie:tmdb:3", MediaAttentionMediaType.MOVIE, 3, 3, "Movie", PipelineStage.ARR_SEARCHING, "Searching"), datetime(2026, 7, 21, 12, tzinfo=timezone.utc))
+        responsive = threading.Event()
+        def movie(now):
+            time.sleep(0.05)
+            self.assertTrue(responsive.is_set())
+            return []
+        service.evaluate_requested_movies = movie
+        service.evaluate_requested_tv = lambda now: []
+        monitor = MediaAttentionMonitorService(service, RecordingAlertStore({}), FakeDiscord())
+        await asyncio.gather(monitor.run_cycle(), self._set_event(responsive))
+        temp.cleanup()
+
+    async def test_slow_tv_evaluator_does_not_block_coroutines(self):
+        temp, service = self._attention_with_snapshot(PipelineSnapshot("movie:tmdb:3", MediaAttentionMediaType.MOVIE, 3, 3, "Movie", PipelineStage.ARR_SEARCHING, "Searching"), datetime(2026, 7, 21, 12, tzinfo=timezone.utc))
+        responsive = threading.Event()
+        service.evaluate_requested_movies = lambda now: []
+        def tv(now):
+            time.sleep(0.05)
+            self.assertTrue(responsive.is_set())
+            return []
+        service.evaluate_requested_tv = tv
+        monitor = MediaAttentionMonitorService(service, RecordingAlertStore({}), FakeDiscord())
+        await asyncio.gather(monitor.run_cycle(), self._set_event(responsive))
+        temp.cleanup()
+
+    async def test_run_cycle_does_not_overlap_evaluators(self):
+        temp, service = self._attention_with_snapshot(PipelineSnapshot("movie:tmdb:3", MediaAttentionMediaType.MOVIE, 3, 3, "Movie", PipelineStage.ARR_SEARCHING, "Searching"), datetime(2026, 7, 21, 12, tzinfo=timezone.utc))
+        active = 0
+        maximum_active = 0
+        lock = threading.Lock()
+
+        def movie(now):
+            nonlocal active, maximum_active
+            with lock:
+                active += 1
+                maximum_active = max(maximum_active, active)
+            time.sleep(0.03)
+            with lock:
+                active -= 1
+            return []
+
+        service.evaluate_requested_movies = movie
+        service.evaluate_requested_tv = lambda now: []
+        monitor = MediaAttentionMonitorService(service, RecordingAlertStore({}), FakeDiscord())
+        await asyncio.gather(monitor.run_cycle(), monitor.run_cycle())
+        self.assertEqual(maximum_active, 1)
+        temp.cleanup()
+
+    @staticmethod
+    async def _set_event(event):
+        await asyncio.sleep(0.01)
+        event.set()
+
 
 class TvTmdb(FakeTmdbService):
     def tv_has_digital_availability(self, tmdb_id):
@@ -622,6 +680,63 @@ class MediaAttentionStateStoreTests(unittest.TestCase):
                 path.write_text(" \n\t ")
                 self.assertEqual(store.load(), {})
 
+    def test_save_creates_parent_and_removes_unique_temporary_file(self):
+        path = Path(self.temp.name) / "nested" / "tracking.json"
+        store = MediaAttentionStateStore(path)
+        replaced_temporary_files = []
+        original_replace = __import__("os").replace
+
+        def record_replace(source, destination):
+            replaced_temporary_files.append(Path(source))
+            original_replace(source, destination)
+
+        with patch("services.media_attention_state_store.os.replace", record_replace):
+            store.save({})
+
+        self.assertTrue(path.exists())
+        self.assertEqual(json.loads(path.read_text())["tracked_media"], {})
+        self.assertEqual(len(replaced_temporary_files), 1)
+        self.assertNotEqual(replaced_temporary_files[0].name, "media_attention.tmp")
+        self.assertFalse(replaced_temporary_files[0].exists())
+        self.assertEqual(list(path.parent.glob("*.tmp")), [])
+
+    def test_permission_error_retries_without_losing_existing_state(self):
+        path = Path(self.temp.name) / "tracking.json"
+        path.write_text('{"previous": true}')
+        store = MediaAttentionStateStore(path)
+        original_replace = __import__("os").replace
+        calls = 0
+
+        def replace_after_retry(source, destination):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise PermissionError(5, "Access denied")
+            original_replace(source, destination)
+
+        with patch(
+            "services.media_attention_state_store.os.replace",
+            side_effect=replace_after_retry,
+        ) as replace:
+            store.save({})
+        self.assertEqual(replace.call_count, 2)
+        self.assertEqual(json.loads(path.read_text())["version"], 1)
+
+    def test_terminal_permission_error_preserves_existing_state_and_logs(self):
+        path = Path(self.temp.name) / "tracking.json"
+        original_contents = '{"previous": true}'
+        path.write_text(original_contents)
+        store = MediaAttentionStateStore(path)
+        with patch(
+            "services.media_attention_state_store.os.replace",
+            side_effect=PermissionError(5, "Access denied"),
+        ) as replace, patch("services.media_attention_state_store.time.sleep"):
+            with self.assertLogs("media-butler", level="WARNING") as logs:
+                store.save({})
+        self.assertEqual(replace.call_count, store.REPLACE_RETRIES)
+        self.assertEqual(path.read_text(), original_contents)
+        self.assertIn("Failed to save state", "\n".join(logs.output))
+        self.assertEqual(list(path.parent.glob("*.tmp")), [])
     def test_valid_state_files_load(self):
         tracking_path = Path(self.temp.name) / "tracking.json"
         tracking_path.write_text(
