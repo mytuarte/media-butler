@@ -1,7 +1,7 @@
 import asyncio
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from flask import Flask
 
@@ -196,9 +196,10 @@ class CompletionNotificationTests(unittest.TestCase):
         self.assertIn("Plex notifications channel 8 is unavailable", logs.output[0])
         self.assertEqual(general_channel.messages, [])
 
-    def test_radarr_webhook_still_sends_movie_notification_when_sonarr_service_is_unconfigured(self):
+    def test_radarr_webhook_handles_test_before_real_notifications(self):
         app = Flask(__name__)
         notifications = []
+        scheduled_notifications = []
 
         class NotificationService:
             async def send_movie_notification(self, notification):
@@ -209,7 +210,15 @@ class CompletionNotificationTests(unittest.TestCase):
 
         radarr = self.radarr_service(self.requester())
         sonarr = self.sonarr_service(self.requester())
-        initialize(NotificationService(), DiscordService(), radarr, sonarr)
+        suppression_store = Mock()
+        suppression_store.consume_matching_import.return_value = False
+        initialize(
+            NotificationService(),
+            DiscordService(),
+            radarr,
+            sonarr,
+            downgrade_suppression_store=suppression_store,
+        )
         app.register_blueprint(webhook_routes)
 
         class CompletedFuture:
@@ -217,13 +226,28 @@ class CompletionNotificationTests(unittest.TestCase):
                 return None
 
         def run_notification(coroutine, loop):
+            scheduled_notifications.append(coroutine)
             asyncio.run(coroutine)
             return CompletedFuture()
 
-        with patch(
+        with patch.object(
+            radarr, "parse_notification", wraps=radarr.parse_notification
+        ) as parse_notification, patch(
             "routes.webhook_routes.asyncio.run_coroutine_threadsafe", run_notification
         ):
             client = app.test_client()
+            with self.assertLogs("media-butler", "INFO") as logs:
+                test_response = client.post("/radarr", json={"eventType": "Test"})
+
+            self.assertEqual(test_response.status_code, 200)
+            self.assertTrue(
+                any("Received Radarr test webhook." in entry for entry in logs.output)
+            )
+            parse_notification.assert_not_called()
+            suppression_store.consume_matching_import.assert_not_called()
+            self.assertEqual(scheduled_notifications, [])
+            self.assertEqual(notifications, [])
+
             radarr_response = client.post(
                 "/radarr", json=self.radarr_payload("Bluray-2160p")
             )
@@ -233,6 +257,9 @@ class CompletionNotificationTests(unittest.TestCase):
 
         self.assertEqual(radarr_response.status_code, 200)
         self.assertEqual(sonarr_response.status_code, 200)
+        parse_notification.assert_called_once()
+        suppression_store.consume_matching_import.assert_called_once()
+        self.assertEqual(len(scheduled_notifications), 1)
         self.assertEqual(len(notifications), 1)
         self.assertEqual(notifications[0].quality, "Bluray-2160p")
 
