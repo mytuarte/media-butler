@@ -197,6 +197,8 @@ class RadarrService:
 
     def get_movie_by_id(self, movie_id: int) -> dict | None:
         """Read one Radarr movie record; analysis must not scan the library."""
+        if not isinstance(movie_id, int) or isinstance(movie_id, bool) or movie_id <= 0:
+            raise RadarrServiceError("Radarr movie lookup requires a positive movie ID")
         response = requests.get(
             f"{Config.RADARR_URL}/api/v3/movie/{movie_id}",
             headers={"X-Api-Key": Config.RADARR_API_KEY},
@@ -207,8 +209,48 @@ class RadarrService:
         response.raise_for_status()
         payload = response.json()
         if not isinstance(payload, dict):
-            raise ValueError("Radarr movie response must be an object")
+            raise RadarrServiceError("Radarr movie response must be an object")
+        response_id = payload.get("id")
+        if (
+            not isinstance(response_id, int)
+            or isinstance(response_id, bool)
+            or response_id <= 0
+            or response_id != movie_id
+        ):
+            raise RadarrServiceError("Radarr movie response ID must match the requested movie ID")
         return payload
+
+    def get_movie_file_snapshot(self, movie_id: int) -> dict:
+        """Return the authoritative current movie/file data used by a downgrade."""
+        movie = self.get_movie_by_id(movie_id)
+        if movie is None:
+            raise RadarrServiceError("Radarr movie does not exist")
+        file_id = movie.get("movieFileId")
+        movie_file = movie.get("movieFile")
+        nested_file_id = movie_file.get("id") if isinstance(movie_file, dict) else None
+        nested_movie_id = movie_file.get("movieId") if isinstance(movie_file, dict) else None
+        if (
+            not isinstance(file_id, int) or isinstance(file_id, bool) or file_id <= 0
+            or not isinstance(nested_file_id, int) or isinstance(nested_file_id, bool)
+            or nested_file_id <= 0 or nested_file_id != file_id
+            or not isinstance(nested_movie_id, int) or isinstance(nested_movie_id, bool)
+            or nested_movie_id <= 0 or nested_movie_id != movie_id
+        ):
+            raise RadarrServiceError("Radarr current movie file could not be identified")
+        path = movie_file.get("path") or movie_file.get("relativePath")
+        file_size = movie_file.get("size")
+        if (
+            not isinstance(path, str) or not path.strip()
+            or not isinstance(file_size, int) or isinstance(file_size, bool) or file_size <= 0
+        ):
+            raise RadarrServiceError("Radarr current movie file snapshot is incomplete")
+        return {
+            "movie_id": movie_id,
+            "movie_file_id": file_id,
+            "path": path,
+            "size": file_size,
+            "quality": movie_file.get("quality"),
+        }
 
     def manual_search(self, movie_id: int) -> list[dict]:
         """Return Radarr's read-only manual-search releases for a movie."""

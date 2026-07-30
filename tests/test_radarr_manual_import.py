@@ -34,6 +34,43 @@ class RadarrManualImportTests(unittest.TestCase):
         }
 
     @patch("services.radarr_service.requests.get")
+    def test_get_movie_by_id_requires_exact_integer_response_identity(self, get):
+        get.return_value.status_code = 200
+        for response_id in (True, False, 42.0, "42", 0, -42, 41, None):
+            with self.subTest(response_id=response_id):
+                get.return_value.json.return_value = {"id": response_id}
+                with self.assertRaisesRegex(RadarrServiceError, "response ID"):
+                    self.service.get_movie_by_id(42)
+
+    def test_movie_file_snapshot_requires_exact_nested_integer_identity(self):
+        base = {
+            "id": 42,
+            "movieFileId": 70,
+            "movieFile": {
+                "id": 70, "movieId": 42, "path": "/movies/Movie.mkv",
+                "size": 100, "quality": self.quality,
+            },
+        }
+        with patch.object(self.service, "get_movie_by_id", return_value=base):
+            snapshot = self.service.get_movie_file_snapshot(42)
+            self.assertEqual(snapshot["movie_file_id"], 70)
+
+        malformed = (True, False, 70.0, "70", 0, -70, 71, None)
+        for field in ("id", "movieId"):
+            expected = 70 if field == "id" else 42
+            for value in malformed:
+                if value == expected and type(value) is int:
+                    continue
+                with self.subTest(field=field, value=value):
+                    movie = {
+                        **base,
+                        "movieFile": {**base["movieFile"], field: value},
+                    }
+                    with patch.object(self.service, "get_movie_by_id", return_value=movie):
+                        with self.assertRaisesRegex(RadarrServiceError, "identified"):
+                            self.service.get_movie_file_snapshot(42)
+
+    @patch("services.radarr_service.requests.get")
     def test_get_manual_import_candidates_uses_exact_request(self, get):
         candidates = [self.candidate]
         get.return_value.json.return_value = candidates
