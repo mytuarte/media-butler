@@ -1,4 +1,5 @@
 import json
+from pathlib import PurePosixPath
 
 import requests
 
@@ -9,6 +10,10 @@ from services.media_status.media_status_resolver import (
     MediaStatusResolver,
 )
 from services.overseerr_service import OverseerrService
+
+
+class RadarrServiceError(ValueError):
+    """Raised when Radarr returns invalid data or an import request is unsafe."""
 
 
 class RadarrService:
@@ -239,3 +244,175 @@ class RadarrService:
         response.raise_for_status()
         payload = response.json()
         return payload.get("records", []) if isinstance(payload, dict) else []
+
+    def get_manual_import_candidates(
+        self,
+        download_id: str,
+        movie_id: int,
+    ) -> list[dict]:
+        """Retrieve Radarr's import candidates for one tracked download."""
+        if not isinstance(download_id, str) or not download_id.strip():
+            raise RadarrServiceError(
+                "Radarr manual-import candidate lookup requires a download ID"
+            )
+        if (
+            not isinstance(movie_id, int)
+            or isinstance(movie_id, bool)
+            or movie_id <= 0
+        ):
+            raise RadarrServiceError(
+                "Radarr manual-import candidate lookup requires a positive movie ID"
+            )
+
+        response = requests.get(
+            f"{Config.RADARR_URL}/api/v3/manualimport",
+            headers={"X-Api-Key": Config.RADARR_API_KEY},
+            params={
+                "downloadId": download_id,
+                "movieId": movie_id,
+                "filterExistingFiles": True,
+            },
+            timeout=10,
+        )
+        response.raise_for_status()
+
+        try:
+            payload = response.json()
+        except (requests.exceptions.JSONDecodeError, ValueError) as error:
+            raise RadarrServiceError(
+                "Radarr manual-import response must be a JSON list of objects"
+            ) from error
+
+        if not isinstance(payload, list) or any(
+            not isinstance(candidate, dict) for candidate in payload
+        ):
+            raise RadarrServiceError(
+                "Radarr manual-import response must be a JSON list of objects"
+            )
+
+        return payload
+
+    def submit_manual_import_candidate(
+        self,
+        candidate: dict,
+        download_id: str,
+        movie_id: int,
+    ) -> dict:
+        """Submit exactly one previously returned candidate to Radarr."""
+        if not isinstance(download_id, str) or not download_id.strip():
+            raise RadarrServiceError("Radarr manual import requires a download ID")
+        if (
+            not isinstance(movie_id, int)
+            or isinstance(movie_id, bool)
+            or movie_id <= 0
+        ):
+            raise RadarrServiceError("Radarr manual import requires a positive movie ID")
+        if not isinstance(candidate, dict):
+            raise RadarrServiceError("Radarr manual-import candidate must be an object")
+
+        path = candidate.get("path")
+        if (
+            not isinstance(path, str)
+            or not path.strip()
+            or not PurePosixPath(path).is_absolute()
+        ):
+            raise RadarrServiceError(
+                "Radarr manual-import candidate requires an absolute path"
+            )
+
+        movie = candidate.get("movie")
+        if not isinstance(movie, dict) or movie.get("id") != movie_id:
+            raise RadarrServiceError(
+                "Radarr manual-import candidate movie ID does not match"
+            )
+
+        candidate_download_id = candidate.get("downloadId")
+        if candidate_download_id is not None and candidate_download_id != download_id:
+            raise RadarrServiceError(
+                "Radarr manual-import candidate download ID does not match"
+            )
+
+        file_payload = {
+            "path": path,
+            "folderName": candidate.get("folderName"),
+            "movieId": movie_id,
+            "releaseGroup": candidate.get("releaseGroup"),
+            "quality": candidate.get("quality"),
+            "languages": candidate.get("languages"),
+            "indexerFlags": candidate.get("indexerFlags"),
+            "downloadId": download_id,
+        }
+        response = requests.post(
+            f"{Config.RADARR_URL}/api/v3/command",
+            headers={"X-Api-Key": Config.RADARR_API_KEY},
+            json={
+                "name": "ManualImport",
+                "files": [file_payload],
+                "importMode": "auto",
+            },
+            timeout=15,
+        )
+        response.raise_for_status()
+
+        try:
+            payload = response.json()
+        except (requests.exceptions.JSONDecodeError, ValueError) as error:
+            raise RadarrServiceError(
+                "Radarr manual-import command response must be an object with an ID"
+            ) from error
+        if not isinstance(payload, dict):
+            raise RadarrServiceError(
+                "Radarr manual-import command response must be a JSON object"
+            )
+
+        command_id = payload.get("id")
+        if (
+            not isinstance(command_id, int)
+            or isinstance(command_id, bool)
+            or command_id <= 0
+        ):
+            raise RadarrServiceError(
+                "Radarr manual-import command response must contain a positive integer ID"
+            )
+        return payload
+
+    def get_command_status(self, command_id: int) -> dict:
+        """Retrieve one Radarr command using its exact command ID."""
+        if (
+            not isinstance(command_id, int)
+            or isinstance(command_id, bool)
+            or command_id <= 0
+        ):
+            raise RadarrServiceError(
+                "Radarr command status requires a positive integer command ID"
+            )
+
+        response = requests.get(
+            f"{Config.RADARR_URL}/api/v3/command/{command_id}",
+            headers={"X-Api-Key": Config.RADARR_API_KEY},
+            timeout=10,
+        )
+        response.raise_for_status()
+
+        try:
+            payload = response.json()
+        except (requests.exceptions.JSONDecodeError, ValueError) as error:
+            raise RadarrServiceError(
+                "Radarr command-status response must be a JSON object"
+            ) from error
+        if not isinstance(payload, dict):
+            raise RadarrServiceError(
+                "Radarr command-status response must be a JSON object"
+            )
+
+        response_id = payload.get("id")
+        if (
+            not isinstance(response_id, int)
+            or isinstance(response_id, bool)
+            or response_id <= 0
+            or response_id != command_id
+        ):
+            raise RadarrServiceError(
+                "Radarr command-status response ID must match the requested command ID"
+            )
+        return payload
