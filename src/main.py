@@ -16,6 +16,8 @@ from routes.webhook_routes import (
 from services.delete_confirmation_service import DeleteConfirmationService
 from services.delete_service import DeleteService
 from services.discord_service import DiscordService
+from services.downgrade_suppression_store import DowngradeSuppressionStore
+from services.downgrade_operation_service import DowngradeOperationService
 from services.health_monitor_service import HealthMonitorService
 from services.media_attention_monitor_service import MediaAttentionMonitorService
 from services.notification_service import NotificationService
@@ -58,6 +60,11 @@ services.media_attention_monitor = MediaAttentionMonitorService(
 services.upcoming_movie_watchlist = UpcomingMovieWatchlistService()
 services.trending_movies = TrendingMoviesService()
 services.trending_tv = TrendingTvService()
+services.downgrade_suppressions = DowngradeSuppressionStore()
+services.downgrade_operation = DowngradeOperationService(
+    services.radarr,
+    services.downgrade_suppressions,
+)
 
 
 initialize_webhook_routes(
@@ -66,6 +73,7 @@ initialize_webhook_routes(
     services.radarr,
     services.sonarr,
     services.series_completion_notifications,
+    services.downgrade_suppressions,
 )
 
 

@@ -2,13 +2,14 @@ import asyncio
 from models.command_channel import CommandChannel
 from services.log_service import logger
 from services.media_service import MediaService
+from services.registry import services
 from views.media_selection_view import MediaSelectionView
 from views.search_results_view import SearchResultsView
 
 
 class DowngradeCommand:
     COMMAND = "downgrade"
-    DESCRIPTION = "Finds smaller acceptable replacement releases (discovery only)."
+    DESCRIPTION = "Finds and starts smaller Radarr movie replacements."
     CHANNELS = {CommandChannel.ADMIN}
     def __init__(self): self.media = MediaService()
     async def execute(self, message):
@@ -22,4 +23,12 @@ class DowngradeCommand:
             await message.channel.send("Unable to search media right now. Please try again."); return
         if not results:
             await message.channel.send(f'No media found matching "{query}".'); return
-        await message.channel.send(embed=SearchResultsView.build(query, results), view=MediaSelectionView(results, message.author.id, mode="downgrade"))
+        await message.channel.send(
+            embed=SearchResultsView.build(query, results),
+            view=MediaSelectionView(
+                results,
+                message.author.id,
+                mode="downgrade",
+                downgrade_operation=services.downgrade_operation,
+            ),
+        )

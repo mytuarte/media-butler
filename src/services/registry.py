@@ -17,6 +17,8 @@ class ServiceRegistry:
         self.trending_movies = None
         self.trending_tv = None
         self.upcoming_movie_watchlist = None
+        self.downgrade_suppressions = None
+        self.downgrade_operation = None
 
 
 services = ServiceRegistry()

@@ -294,4 +294,16 @@ Media Butler is a personal project built to simplify media automation and notifi
 `!analyze <title>` is an admin-only, read-only technical and storage inspection
 for a selected movie or TV series. It reports the files currently recorded by
 Radarr or Sonarr, without searching for replacements or modifying media,
-monitoring, quality profiles, or downloads. `!downgrade <title>` is also admin-only and discovery-only: it analyzes the selected item and presents up to five smaller, acceptable Arr manual-search releases. It does not download, queue, import, delete, replace, or change any service. The download workflow is planned for Phase 2.
+monitoring, quality profiles, or downloads.
+
+### `!downgrade` Phase 2A
+
+`!downgrade <title>` is admin-only. It analyzes the selected item and presents
+up to five smaller acceptable Arr manual-search releases. Confirmed movie
+replacements can be submitted to Radarr; Media Butler verifies their queue
+appearance and reports when downloading starts. TV remains discovery-only.
+
+Requester completion pings are suppressed only for active downgrade operations.
+Import verification and final completion/storage reporting remain future work.
+Media Butler never deletes the old file or changes monitoring, profiles, or
+custom formats; the existing file remains entirely under Radarr's control.

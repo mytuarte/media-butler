@@ -10,18 +10,32 @@ webhook_routes = Blueprint(
 )
 
 
+def should_suppress_movie_notification(payload, suppression_store):
+    """Atomically consume an exactly matching completed Radarr download."""
+    return suppression_store is not None and suppression_store.consume_matching_import(payload)
+
+
 def initialize(
     notification_service,
     discord_service,
     radarr_service,
     sonarr_service,
     series_completion_notification_service=None,
+    downgrade_suppression_store=None,
 ):
     @webhook_routes.post("/radarr")
     def radarr():
         logger.info("Received Radarr webhook.")
 
         payload = request.json
+
+        if should_suppress_movie_notification(payload, downgrade_suppression_store):
+            logger.info(
+                "Suppressing requester completion notification for active "
+                "downgrade of Radarr movie %s",
+                payload.get("movie", {}).get("id"),
+            )
+            return "", 200
 
         movie = payload.get("movie", {})
         logger.info(

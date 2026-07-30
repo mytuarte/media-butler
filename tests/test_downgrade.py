@@ -110,11 +110,12 @@ class DowngradeUiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(confirmation.fields[2].name, "Release")
         self.assertEqual(confirmation.fields[2].value, "Film.1080p.WEB-DL")
 
-    async def test_confirm_performs_no_write_action(self):
+    async def test_tv_confirm_performs_no_write_action(self):
         candidate = DowngradeService._normalize(release(40), "Film", 100, 1080)
-        parent = DowngradeView("Film", 100, "Remux", [candidate], 1)
+        parent = DowngradeView("Film", 100, "Remux", [candidate], 1, media_id=7, media_type="series")
         view = DowngradeConfirmationView(parent, candidate)
-        response = Mock(); response.send_message = AsyncMock()
+        response = Mock(); response.send_message = AsyncMock(); response.edit_message = AsyncMock()
         interaction = SimpleNamespace(user=SimpleNamespace(id=1), response=response)
         await view.confirm(interaction)
-        response.send_message.assert_called_once_with("Download workflow not implemented yet.", ephemeral=True)
+        response.edit_message.assert_awaited_once()
+        self.assertEqual(response.edit_message.await_args.kwargs["content"], "TV replacement downloads are not currently supported.")
