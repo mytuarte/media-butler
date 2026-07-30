@@ -312,10 +312,100 @@ class Phase2B2Tests(unittest.TestCase):
             radarr.get_manual_import_candidates.assert_called_once()
             method_names = [call[0] for call in radarr.method_calls]
             self.assertNotIn("submit_manual_import_candidate", method_names)
+            self.assertNotIn("grab_release", method_names)
+            self.assertFalse(any("delete" in name.casefold() for name in method_names))
             return result
 
     def test_exact_normalized_not_upgrade_is_ready(self):
         self.assert_state(import_candidate(rejections=["  nOt An UpGrAdE FoR ExIsTiNg MoViE FiLe(S)  "]), "manual_import_ready")
+
+    def test_real_radarr_6_structured_not_upgrade_is_ready(self):
+        candidate = import_candidate(
+            quality={"quality": {"name": "Bluray-2160p"}},
+            rejections=[
+                "Not an upgrade for existing movie file. Existing quality: "
+                "WEBDL-2160p. New Quality Bluray-2160p."
+            ],
+        )
+        record = operation(
+            original_quality={"quality": {"name": "WEBDL-2160p"}}
+        )
+        self.assert_state(candidate, "manual_import_ready", record)
+
+    def test_structured_not_upgrade_normalizes_case_and_surrounding_whitespace(self):
+        candidate = import_candidate(
+            quality={"quality": {"name": "  BLURAY-2160P "}},
+            rejections=[
+                "  nOt An UpGrAdE FoR ExIsTiNg MoViE FiLe. ExIsTiNg QuAlItY: "
+                "webdl-2160P. NeW qUaLiTy bluray-2160p.  "
+            ],
+        )
+        record = operation(
+            original_quality={"quality": {"name": " WEBDL-2160p  "}}
+        )
+        self.assert_state(candidate, "manual_import_ready", record)
+
+    def test_structured_not_upgrade_quality_mismatches_are_blocked(self):
+        rejection = [
+            "Not an upgrade for existing movie file. Existing quality: "
+            "WEBDL-2160p. New Quality Bluray-2160p."
+        ]
+        candidate = import_candidate(
+            quality={"quality": {"name": "Bluray-2160p"}},
+            rejections=rejection,
+        )
+        self.assert_state(
+            candidate, "blocked",
+            operation(original_quality={"quality": {"name": "HDTV-2160p"}}),
+        )
+        self.assert_state(
+            import_candidate(
+                quality={"quality": {"name": "Bluray-1080p"}},
+                rejections=rejection,
+            ),
+            "blocked",
+            operation(original_quality={"quality": {"name": "WEBDL-2160p"}}),
+        )
+
+    def test_structured_not_upgrade_missing_quality_names_are_blocked(self):
+        rejection = [
+            "Not an upgrade for existing movie file. Existing quality: "
+            "WEBDL-2160p. New Quality Bluray-2160p."
+        ]
+        self.assert_state(
+            import_candidate(rejections=rejection),
+            "blocked",
+            operation(original_quality=None),
+        )
+        self.assert_state(
+            import_candidate(quality={"quality": {}}, rejections=rejection),
+            "blocked",
+        )
+
+    def test_structured_not_upgrade_requires_complete_exact_message(self):
+        valid = (
+            "Not an upgrade for existing movie file. Existing quality: "
+            "Bluray-2160p. New Quality Bluray-1080p."
+        )
+        malformed = (
+            f"unexpected {valid}",
+            f"{valid} unexpected",
+            "Not an upgrade for existing movie file. Existing quality: Bluray-2160p.",
+            "Not an upgrade for existing movie file. Existing quality: . New Quality Bluray-1080p.",
+            "Not an upgrade for existing movie file. Existing quality: Bluray-2160p. New Quality .",
+        )
+        for rejection in malformed:
+            with self.subTest(rejection=rejection):
+                self.assert_state(
+                    import_candidate(rejections=[rejection]), "blocked"
+                )
+
+    def test_structured_not_upgrade_plus_second_rejection_is_blocked(self):
+        self.assert_state(import_candidate(rejections=[
+            "Not an upgrade for existing movie file. Existing quality: "
+            "Bluray-2160p. New Quality Bluray-1080p.",
+            "File is locked",
+        ]), "blocked")
 
     def test_rejections_fail_closed(self):
         self.assert_state(import_candidate(rejections=["Not an upgrade for existing movie file(s)", "File is locked"]), "blocked")
