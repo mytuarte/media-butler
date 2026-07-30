@@ -1,4 +1,5 @@
 """Radarr replacement submission and read-only import-readiness inspection."""
+import re
 import threading
 import time
 from dataclasses import dataclass
@@ -49,6 +50,10 @@ class DowngradeOperationService:
     _active = set()
     _active_lock = threading.Lock()
     _APPROVED_REJECTION = "not an upgrade for existing movie file(s)"
+    _STRUCTURED_REJECTION = re.compile(
+        r"\Anot an upgrade for existing movie file\. existing quality: "
+        r"(?P<existing>.+?)\. new quality (?P<new>.+?)\.\Z"
+    )
 
     def __init__(
         self, radarr, suppression_store=None, discovery=None, timeout=75,
@@ -215,11 +220,37 @@ class DowngradeOperationService:
             reason = "Safe candidate has no rejection; Radarr may be importing automatically"
             self.operations.transition(movie_id, "automatic_import_detected", reason)
             return ManualImportReadiness("automatic_import_detected", reason, candidate)
-        if rejections == [self._APPROVED_REJECTION]:
+        if len(rejections) == 1 and self._approved_rejection(
+            rejections[0], operation, candidate
+        ):
             reason = "The only rejection is Radarr's exact not-an-upgrade condition"
             self.operations.transition(movie_id, "manual_import_ready", reason)
             return ManualImportReadiness("manual_import_ready", reason, candidate)
         return self._inspection_result(movie_id, "blocked", "Candidate contains an unapproved or additional rejection")
+
+    @classmethod
+    def _approved_rejection(cls, rejection, operation, candidate):
+        if rejection == cls._APPROVED_REJECTION:
+            return True
+
+        match = cls._STRUCTURED_REJECTION.fullmatch(rejection)
+        if match is None:
+            return False
+        try:
+            original_name = operation.original_quality["quality"]["name"]
+            candidate_name = candidate["quality"]["quality"]["name"]
+        except (KeyError, TypeError):
+            return False
+        if not isinstance(original_name, str) or not original_name.strip():
+            return False
+        if not isinstance(candidate_name, str) or not candidate_name.strip():
+            return False
+        return (
+            match.group("existing").strip().casefold()
+            == original_name.strip().casefold()
+            and match.group("new").strip().casefold()
+            == candidate_name.strip().casefold()
+        )
 
     def _inspection_result(self, movie_id, state, reason):
         self.operations.transition(movie_id, state, reason)
