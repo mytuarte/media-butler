@@ -40,6 +40,10 @@ class DowngradePhase2ATests(unittest.TestCase):
         radarr.manual_search.return_value = [release()]
         radarr.grab_release.return_value = grab or {}
         radarr.get_queue.return_value = queue or []
+        radarr.get_movie_file_snapshot.return_value = {
+            "movie_id": 7, "movie_file_id": 70, "path": "/movies/Film.mkv",
+            "size": 100, "quality": {"quality": {"name": "Bluray-2160p"}},
+        }
         return radarr
 
     def test_refresh_matches_guid_indexer_title_and_size(self):
@@ -76,10 +80,12 @@ class DowngradePhase2ATests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             for queue, timeout in (([{"movieId": 7, "title": "Film.1080p", "protocol": "usenet", "status": "downloading"}], 1), ([], 0)):
                 store = self.store(directory); radarr = self.configured_radarr(queue)
-                DowngradeOperationService(radarr, store, timeout=timeout, poll_interval=0).run(7, candidate())
+                operation = DowngradeOperationService(radarr, store, timeout=timeout, poll_interval=0)
+                operation.run(7, candidate())
                 with self.assertRaises(DuplicateDowngrade):
                     DowngradeOperationService(radarr, store, timeout=0).run(7, candidate())
                 store.remove(7)
+                operation.operations.remove(7)
 
     def test_active_movie_lock_rejects_simultaneous_call(self):
         entered = threading.Event(); release_first = threading.Event()
@@ -102,6 +108,7 @@ class DowngradePhase2ATests(unittest.TestCase):
                     DowngradeOperationService(radarr, store).run(7, candidate())
                 self.assertEqual(store.has_active(7), remains)
                 store.remove(7)
+                DowngradeOperationService(radarr, store).operations.remove(7)
 
     def test_queue_states_and_exact_matching(self):
         with tempfile.TemporaryDirectory() as directory:
