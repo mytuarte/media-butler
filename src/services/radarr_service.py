@@ -214,3 +214,28 @@ class RadarrService:
         )
         response.raise_for_status()
         return response.json()
+
+    def grab_release(self, release: dict) -> dict:
+        """Submit exactly one object returned by the manual-search endpoint."""
+        response = requests.post(
+            f"{Config.RADARR_URL}/api/v3/release",
+            headers={"X-Api-Key": Config.RADARR_API_KEY},
+            json=release,
+            timeout=15,
+        )
+        response.raise_for_status()
+        if not response.content:
+            return {}
+        payload = response.json()
+        return payload if isinstance(payload, dict) else {}
+
+    def get_queue(self) -> list[dict]:
+        response = requests.get(
+            f"{Config.RADARR_URL}/api/v3/queue",
+            headers={"X-Api-Key": Config.RADARR_API_KEY},
+            params={"pageSize": 100, "includeUnknownMovieItems": "true"},
+            timeout=10,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        return payload.get("records", []) if isinstance(payload, dict) else []

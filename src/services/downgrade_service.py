@@ -132,7 +132,7 @@ def _blocking_rejections(release: dict[str, Any]) -> list[str]:
 
 
 class DowngradeService:
-    """Uses Arr manual-search endpoints only; it never changes Arr state."""
+    """Discovers candidates and refreshes their exact Arr identity."""
 
     def __init__(self, radarr=None, sonarr=None):
         self.radarr = radarr or RadarrService()
@@ -193,6 +193,24 @@ class DowngradeService:
         )
 
         return candidates
+
+    def refresh_exact_movie_release(self, movie_id: int, selected: ReplacementCandidate):
+        """Return the refreshed raw release only when all stable identity agrees."""
+        for release in self.radarr.manual_search(movie_id):
+            if not isinstance(release, dict):
+                continue
+            guid = text(release.get("guid"))
+            indexer_id = release.get("indexerId")
+            name = text(release.get("releaseTitle")) or text(release.get("title"))
+            if (
+                selected.guid
+                and guid == selected.guid
+                and indexer_id == selected.indexer_id
+                and name == selected.release_name
+                and size(release) == selected.size_bytes
+            ):
+                return release
+        return None
 
     @staticmethod
     def _normalize(
@@ -283,6 +301,8 @@ class DowngradeService:
                 savings_bytes=savings,
                 savings_percent=round(savings / current_size * 100),
                 release_name=release_name,
+                guid=text(release.get("guid")),
+                indexer_id=(release.get("indexerId") if isinstance(release.get("indexerId"), int) and not isinstance(release.get("indexerId"), bool) else None),
             ),
             None,
         )

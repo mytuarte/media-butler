@@ -19,11 +19,13 @@ class MediaSelectionView(discord.ui.View):
         results: list[MediaResult],
         requesting_user_id: int,
         mode: str = "find",
+        downgrade_operation=None,
     ):
         super().__init__(timeout=300)
 
         self.requesting_user_id = requesting_user_id
         self.mode = mode
+        self.downgrade_operation = downgrade_operation
 
         self.media_details = MediaDetailsService()
         self.analyze = AnalyzeService()
@@ -62,7 +64,7 @@ class MediaSelectionView(discord.ui.View):
                         candidates = await asyncio.to_thread(self.downgrade.candidates, result, analysis)
                         current_quality = getattr(analysis, "quality", None) or next(iter(analysis.quality_distribution), None)
                         embed = DowngradeView.build(result.title, analysis.total_size_bytes, current_quality, candidates)
-                        view = DowngradeView(result.title, analysis.total_size_bytes, current_quality, candidates, self.requesting_user_id)
+                        view = DowngradeView(result.title, analysis.total_size_bytes, current_quality, candidates, self.requesting_user_id, media_id=result.id, media_type=result.media_type, operation=self.downgrade_operation)
                     else:
                         embed = AnalyzeView.build(analysis)
                 except Exception:
