@@ -29,6 +29,10 @@ def initialize(
 
         payload = request.json
 
+        if payload.get("eventType") == "Test":
+            logger.info("Received Radarr test webhook.")
+            return "", 200
+
         if should_suppress_movie_notification(payload, downgrade_suppression_store):
             logger.info(
                 "Suppressing requester completion notification for active "
