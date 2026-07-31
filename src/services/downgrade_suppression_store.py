@@ -104,6 +104,15 @@ class DowngradeSuppressionStore:
             self._clean_expired()
             return movie_id in self._records
 
+    def get(self, movie_id):
+        """Return the currently durable record, if one can be loaded safely."""
+        if not isinstance(movie_id, int) or isinstance(movie_id, bool) or movie_id <= 0:
+            raise ValueError("suppression requires a positive integer movie ID")
+        with self._lock:
+            self._records = self._load()
+            self._clean_expired()
+            return self._records.get(movie_id)
+
     def add(self, record):
         with self._lock:
             self._records = self._load()
