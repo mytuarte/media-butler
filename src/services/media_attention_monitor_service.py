@@ -11,7 +11,11 @@ from services.media_attention_service import MediaAttentionService
 class MediaAttentionMonitorService:
     """Periodically identifies stalled eligible movie and TV requests."""
 
-    TERMINAL_STAGES = {PipelineStage.PLEX_AVAILABLE, PipelineStage.SERIES_CAUGHT_UP}
+    TERMINAL_STAGES = {
+        PipelineStage.PLEX_AVAILABLE,
+        PipelineStage.SERIES_CAUGHT_UP,
+        PipelineStage.WAITING_FOR_RELEASE,
+    }
 
     def __init__(
         self,

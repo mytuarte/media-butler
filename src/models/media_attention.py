@@ -13,6 +13,7 @@ class MediaAttentionMediaType(Enum):
 
 
 class PipelineStage(Enum):
+    WAITING_FOR_RELEASE = "waiting_for_release"
     WAITING_FOR_ARR = "waiting_for_arr"
     ARR_SEARCHING = "arr_searching"
     DOWNLOADING = "downloading"

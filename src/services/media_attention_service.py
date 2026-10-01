@@ -538,6 +538,12 @@ class MediaAttentionService:
         if movie is None:
             return PipelineStage.WAITING_FOR_ARR, "Waiting for Radarr."
 
+        if (
+            not movie.get("hasFile")
+            and str(movie.get("status", "")).lower() in {"announced", "incinemas", "tba"}
+        ):
+            return PipelineStage.WAITING_FOR_RELEASE, "Waiting for the movie to reach Radarr release availability."
+
         if movie.get("hasFile"):
             return PipelineStage.PLEX_SYNC_PENDING, "Imported; waiting for Plex."
 

@@ -7,6 +7,7 @@ class MediaAttentionAlertView:
     """Discord presentation only; monitoring decisions remain in the service."""
 
     STAGE_LABELS = {
+        "waiting_for_release": "Waiting for release",
         "waiting_for_arr": "Waiting for Radarr",
         "arr_searching": "Radarr searching",
         "downloading": "Downloading",
