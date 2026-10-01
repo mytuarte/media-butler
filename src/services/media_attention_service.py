@@ -82,7 +82,8 @@ class MediaAttentionService:
 
             tmdb_id = request["media"]["tmdbId"]
             active_movie_tmdb_ids.add(tmdb_id)
-            if not self.tmdb.movie_has_digital_availability(tmdb_id):
+            movie = movies_by_tmdb.get(tmdb_id)
+            if not self.tmdb.movie_has_digital_availability(tmdb_id) and not MediaAttentionService._movie_waiting_for_release(movie):
                 continue
 
             if radarr_history is None:
@@ -181,7 +182,11 @@ class MediaAttentionService:
                 )
                 continue
 
-            if not plex_available and not (movie or {}).get("hasFile"):
+            if (
+                not plex_available
+                and not (movie or {}).get("hasFile")
+                and not MediaAttentionService._movie_waiting_for_release(movie)
+            ):
                 continue
 
             snapshot = self.capture_movie_snapshot(
@@ -527,6 +532,15 @@ class MediaAttentionService:
         }
 
     @staticmethod
+    def _movie_waiting_for_release(movie: dict | None) -> bool:
+        return (
+            isinstance(movie, dict)
+            and not movie.get("hasFile")
+            and str(movie.get("status", "")).lower()
+            in {"announced", "incinemas", "tba"}
+        )
+
+    @staticmethod
     def _resolve_movie_stage(
         movie: dict | None,
         sab_evidence: dict,
@@ -538,10 +552,7 @@ class MediaAttentionService:
         if movie is None:
             return PipelineStage.WAITING_FOR_ARR, "Waiting for Radarr."
 
-        if (
-            not movie.get("hasFile")
-            and str(movie.get("status", "")).lower() in {"announced", "incinemas", "tba"}
-        ):
+        if MediaAttentionService._movie_waiting_for_release(movie):
             return PipelineStage.WAITING_FOR_RELEASE, "Waiting for the movie to reach Radarr release availability."
 
         if movie.get("hasFile"):
