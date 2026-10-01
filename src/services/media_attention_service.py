@@ -41,6 +41,7 @@ class MediaAttentionService:
         self.sonarr = sonarr or SonarrService()
         self.series_progress = SeriesProgressService(self.sonarr)
         self.tracked_media = self.state_store.load()
+        self.retired_movie_snapshots: list[PipelineSnapshot] = []
         self.retired_tv_snapshots: list[PipelineSnapshot] = []
         self.retired_tv_generations: dict[str, int] = {}
         self.last_requests_checked = 0
@@ -51,6 +52,7 @@ class MediaAttentionService:
     ) -> list[PipelineSnapshot]:
         """Capture and evaluate all eligible movie requests for this cycle."""
         now = now or datetime.now(timezone.utc)
+        self.retired_movie_snapshots = []
 
         try:
             self.plex.test_connection()
@@ -72,12 +74,14 @@ class MediaAttentionService:
         sab_queue = None
         sab_history = None
         snapshots = []
+        active_movie_tmdb_ids = set()
 
         for request in requests:
             if not self._is_active_movie_request(request):
                 continue
 
             tmdb_id = request["media"]["tmdbId"]
+            active_movie_tmdb_ids.add(tmdb_id)
             if not self.tmdb.movie_has_digital_availability(tmdb_id):
                 continue
 
@@ -110,10 +114,85 @@ class MediaAttentionService:
             self.evaluate_snapshot(snapshot, now)
             snapshots.append(snapshot)
 
-        if snapshots:
+        self._collect_retired_movie_snapshots(
+            requests,
+            active_movie_tmdb_ids,
+            movies_by_tmdb,
+            now,
+        )
+        if snapshots or self.retired_movie_snapshots:
             self.state_store.save(self.tracked_media)
 
         return snapshots
+
+    def _collect_retired_movie_snapshots(
+        self,
+        requests: list[dict],
+        active_movie_tmdb_ids: set[int],
+        movies_by_tmdb: dict[int, dict],
+        now: datetime,
+    ) -> None:
+        """Refresh tracked movies whose request has completed or otherwise left the active set.
+
+        Overseerr removes completed requests from the active movie list.  Keep
+        checking a tracked movie while Radarr/Plex provide evidence of the final
+        state so a previously-created alert can be resolved instead of remaining
+        visible forever.
+        """
+        requests_by_tmdb = {}
+        for request in requests:
+            if request.get("type") != "movie":
+                continue
+            media = request.get("media", {})
+            tmdb_id = media.get("tmdbId")
+            if tmdb_id is None or tmdb_id in active_movie_tmdb_ids:
+                continue
+            requests_by_tmdb[tmdb_id] = request
+
+        for tracked in tuple(self.tracked_media.values()):
+            if tracked.media_type is not MediaAttentionMediaType.MOVIE:
+                continue
+            if tracked.tmdb_id in active_movie_tmdb_ids:
+                continue
+
+            request = requests_by_tmdb.get(tracked.tmdb_id)
+            movie = movies_by_tmdb.get(tracked.tmdb_id)
+            if request is None:
+                request = {
+                    "id": tracked.request_id,
+                    "type": "movie",
+                    "status": 5,
+                    "media": {
+                        "tmdbId": tracked.tmdb_id,
+                        "title": tracked.title,
+                    },
+                }
+            title = self._movie_title(request, movie)
+            try:
+                plex_available = self.plex.movie_is_available(
+                    tracked.tmdb_id,
+                    title,
+                )
+            except Exception as error:
+                logger.warning(
+                    "Plex availability check failed while retiring movie %s: %s",
+                    title,
+                    error,
+                )
+                continue
+
+            if not plex_available and not (movie or {}).get("hasFile"):
+                continue
+
+            snapshot = self.capture_movie_snapshot(
+                request,
+                movie,
+                title=title,
+                plex_evidence={"available": plex_available},
+                history=self._movie_history_evidence(movie, []),
+            )
+            self.evaluate_snapshot(snapshot, now)
+            self.retired_movie_snapshots.append(snapshot)
 
     def evaluate_requested_tv(self, now: datetime | None = None) -> list[PipelineSnapshot]:
         """Evaluate each active TV request once, at series rather than episode scope."""

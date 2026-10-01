@@ -91,6 +91,7 @@ class MediaAttentionMonitorService:
                     logger.exception("Media Attention %s evaluation failed", media_type)
             for snapshot in snapshots:
                 await self._evaluate_snapshot(snapshot, now)
+            await self._evaluate_retired_movies(now)
             await self._retire_inactive_tv(now)
             await asyncio.to_thread(self.alert_store.save, self.alerts)
             active_count = sum(alert.status == "active" for alert in self.alerts.values())
@@ -101,6 +102,17 @@ class MediaAttentionMonitorService:
                 active_count,
             )
             return snapshots
+
+    async def _evaluate_retired_movies(self, now: datetime) -> None:
+        """Apply current evidence to alerts whose movie request is no longer active."""
+        for snapshot in getattr(
+            self.attention_service,
+            "retired_movie_snapshots",
+            [],
+        ):
+            if snapshot.media_key not in self.attention_service.tracked_media:
+                continue
+            await self._evaluate_snapshot(snapshot, now)
 
     async def _retire_inactive_tv(self, now: datetime) -> None:
         """Resolve obsolete TV alerts and discard their old stall timers.
