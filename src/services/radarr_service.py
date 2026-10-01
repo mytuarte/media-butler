@@ -25,7 +25,7 @@ class RadarrService:
 
         tmdb_id = movie.get("tmdbId")
 
-        request = self.overseerr.get_request(tmdb_id)
+        request = self.overseerr.get_request(tmdb_id, refresh=True)
 
         requester = (
             request.requester_discord_id
@@ -217,7 +217,9 @@ class RadarrService:
             or response_id <= 0
             or response_id != movie_id
         ):
-            raise RadarrServiceError("Radarr movie response ID must match the requested movie ID")
+            raise RadarrServiceError(
+                "Radarr movie response ID must match the requested movie ID"
+            )
         return payload
 
     def get_movie_file_snapshot(self, movie_id: int) -> dict:
@@ -228,20 +230,33 @@ class RadarrService:
         file_id = movie.get("movieFileId")
         movie_file = movie.get("movieFile")
         nested_file_id = movie_file.get("id") if isinstance(movie_file, dict) else None
-        nested_movie_id = movie_file.get("movieId") if isinstance(movie_file, dict) else None
+        nested_movie_id = (
+            movie_file.get("movieId") if isinstance(movie_file, dict) else None
+        )
         if (
-            not isinstance(file_id, int) or isinstance(file_id, bool) or file_id <= 0
-            or not isinstance(nested_file_id, int) or isinstance(nested_file_id, bool)
-            or nested_file_id <= 0 or nested_file_id != file_id
-            or not isinstance(nested_movie_id, int) or isinstance(nested_movie_id, bool)
-            or nested_movie_id <= 0 or nested_movie_id != movie_id
+            not isinstance(file_id, int)
+            or isinstance(file_id, bool)
+            or file_id <= 0
+            or not isinstance(nested_file_id, int)
+            or isinstance(nested_file_id, bool)
+            or nested_file_id <= 0
+            or nested_file_id != file_id
+            or not isinstance(nested_movie_id, int)
+            or isinstance(nested_movie_id, bool)
+            or nested_movie_id <= 0
+            or nested_movie_id != movie_id
         ):
-            raise RadarrServiceError("Radarr current movie file could not be identified")
+            raise RadarrServiceError(
+                "Radarr current movie file could not be identified"
+            )
         path = movie_file.get("path") or movie_file.get("relativePath")
         file_size = movie_file.get("size")
         if (
-            not isinstance(path, str) or not path.strip()
-            or not isinstance(file_size, int) or isinstance(file_size, bool) or file_size <= 0
+            not isinstance(path, str)
+            or not path.strip()
+            or not isinstance(file_size, int)
+            or isinstance(file_size, bool)
+            or file_size <= 0
         ):
             raise RadarrServiceError("Radarr current movie file snapshot is incomplete")
         return {
@@ -257,7 +272,8 @@ class RadarrService:
         response = requests.get(
             f"{Config.RADARR_URL}/api/v3/release",
             headers={"X-Api-Key": Config.RADARR_API_KEY},
-            params={"movieId": movie_id}, timeout=10,
+            params={"movieId": movie_id},
+            timeout=10,
         )
         response.raise_for_status()
         return response.json()
@@ -297,11 +313,7 @@ class RadarrService:
             raise RadarrServiceError(
                 "Radarr manual-import candidate lookup requires a download ID"
             )
-        if (
-            not isinstance(movie_id, int)
-            or isinstance(movie_id, bool)
-            or movie_id <= 0
-        ):
+        if not isinstance(movie_id, int) or isinstance(movie_id, bool) or movie_id <= 0:
             raise RadarrServiceError(
                 "Radarr manual-import candidate lookup requires a positive movie ID"
             )
@@ -343,12 +355,10 @@ class RadarrService:
         """Submit exactly one previously returned candidate to Radarr."""
         if not isinstance(download_id, str) or not download_id.strip():
             raise RadarrServiceError("Radarr manual import requires a download ID")
-        if (
-            not isinstance(movie_id, int)
-            or isinstance(movie_id, bool)
-            or movie_id <= 0
-        ):
-            raise RadarrServiceError("Radarr manual import requires a positive movie ID")
+        if not isinstance(movie_id, int) or isinstance(movie_id, bool) or movie_id <= 0:
+            raise RadarrServiceError(
+                "Radarr manual import requires a positive movie ID"
+            )
         if not isinstance(candidate, dict):
             raise RadarrServiceError("Radarr manual-import candidate must be an object")
 
