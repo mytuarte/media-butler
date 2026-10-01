@@ -3,12 +3,91 @@ from datetime import date, timedelta
 import requests
 
 from config import Config
+from models.discovery.discovery_details import DiscoveryDetails
 from models.discovery.discovery_item import DiscoveryItem
 
 
 class TmdbService:
     BASE_URL = "https://api.themoviedb.org/3"
     WATCH_PROVIDER_REGION = "US"
+    STREAMING_PROVIDER_TYPES = ("flatrate", "free", "ads")
+
+    def get_details(
+        self,
+        media_type: str,
+        tmdb_id: int,
+        region: str = WATCH_PROVIDER_REGION,
+    ) -> DiscoveryDetails:
+        """Return the current TMDB summary, rating, and streaming providers."""
+        if media_type not in {"movie", "tv"}:
+            raise ValueError("TMDB details media type must be movie or tv.")
+
+        if not isinstance(tmdb_id, int) or isinstance(tmdb_id, bool) or tmdb_id <= 0:
+            raise ValueError("TMDB details ID must be positive.")
+
+        response = requests.get(
+            f"{self.BASE_URL}/{media_type}/{tmdb_id}",
+            params={
+                "api_key": Config.TMDB_API_KEY,
+                "append_to_response": "watch/providers",
+            },
+            timeout=30,
+        )
+        response.raise_for_status()
+        payload = response.json()
+
+        regional_providers = (
+            payload.get("watch/providers", {})
+            .get("results", {})
+            .get(region, {})
+        )
+        title = payload.get("title") or payload.get("name") or "Untitled"
+        release_date = payload.get("release_date") or payload.get("first_air_date")
+        vote_average = payload.get("vote_average")
+        vote_count = payload.get("vote_count")
+
+        return DiscoveryDetails(
+            title=title,
+            media_type=media_type,
+            tmdb_id=tmdb_id,
+            overview=payload.get("overview"),
+            vote_average=(
+                float(vote_average)
+                if isinstance(vote_average, (int, float))
+                and not isinstance(vote_average, bool)
+                else None
+            ),
+            vote_count=(
+                int(vote_count)
+                if isinstance(vote_count, int) and not isinstance(vote_count, bool)
+                else None
+            ),
+            poster_url=(
+                f"https://image.tmdb.org/t/p/w500{payload['poster_path']}"
+                if payload.get("poster_path")
+                else None
+            ),
+            release_date=release_date,
+            streaming_providers=self._streaming_provider_names(regional_providers),
+        )
+
+    @classmethod
+    def _streaming_provider_names(cls, regional_providers: dict) -> tuple[str, ...]:
+        names = []
+        seen = set()
+
+        for provider_type in cls.STREAMING_PROVIDER_TYPES:
+            for provider in regional_providers.get(provider_type, []) or []:
+                name = (
+                    provider.get("provider_name")
+                    if isinstance(provider, dict)
+                    else None
+                )
+                if isinstance(name, str) and name and name not in seen:
+                    names.append(name)
+                    seen.add(name)
+
+        return tuple(names)
 
     def get_trending_movies(self, pages: int = 1) -> list[DiscoveryItem]:
         """Return TMDB's popularity-ranked movies across the requested pages."""

@@ -10,12 +10,14 @@ from models.trending_movies_state import TrendingMoviesState
 from services.discovery.discovery_service import DiscoveryService
 from services.log_service import logger
 from services.registry import services
+from views.discovery_details_view import DiscoveryDetailsView
 from views.trending_tv_view import TrendingTvView
 
 
 class TrendingTvService:
     STATE_FILE = Path("data/trending_tv.json")
     DASHBOARD_SHOW_LIMIT = 20
+    DASHBOARD_KEY = "trending_tv"
 
     def __init__(self):
         self.discovery = DiscoveryService()
@@ -71,6 +73,7 @@ class TrendingTvService:
             len(shows),
         )
         fingerprint = self._fingerprint(shows)
+        view = self._details_view(shows)
 
         if self.state is not None:
             message_exists = await services.discord.trending_tv_message_exists(
@@ -79,24 +82,46 @@ class TrendingTvService:
             if message_exists is None:
                 return
             if not message_exists:
-                message = await services.discord.send_trending_tv(TrendingTvView.build(shows))
-                self._save_state(fingerprint, message.id)
+                message = await services.discord.send_trending_tv(
+                    TrendingTvView.build(shows),
+                    view=view,
+                )
+                self._save_state(fingerprint, message.id, shows)
                 return
-            if self.state.fingerprint == fingerprint:
+            if (
+                self.state.fingerprint == fingerprint
+                and self.state.details_view_version >= DiscoveryDetailsView.VERSION
+            ):
                 return
 
         embed = TrendingTvView.build(shows)
         if self.state is None:
-            message = await services.discord.send_trending_tv(embed)
-            self._save_state(fingerprint, message.id)
+            message = await services.discord.send_trending_tv(embed, view=view)
+            self._save_state(fingerprint, message.id, shows)
             return
 
-        updated = await services.discord.update_trending_tv(self.state.message_id, embed)
+        updated = await services.discord.update_trending_tv(
+            self.state.message_id,
+            embed,
+            view=view,
+        )
         if updated is True:
-            self._save_state(fingerprint, self.state.message_id)
+            self._save_state(fingerprint, self.state.message_id, shows)
         elif updated is False:
-            message = await services.discord.send_trending_tv(embed)
-            self._save_state(fingerprint, message.id)
+            message = await services.discord.send_trending_tv(embed, view=view)
+            self._save_state(fingerprint, message.id, shows)
+
+    def details_view(self):
+        if self.state is None:
+            return None
+        return DiscoveryDetailsView.from_selections(
+            self.state.details_items,
+            self.DASHBOARD_KEY,
+        )
+
+    @classmethod
+    def _details_view(cls, shows: list[DiscoveryItem]):
+        return DiscoveryDetailsView.from_items(shows, cls.DASHBOARD_KEY)
 
     @staticmethod
     def _deduplicate_by_tmdb_id(shows: list[DiscoveryItem]) -> list[DiscoveryItem]:
@@ -109,8 +134,8 @@ class TrendingTvService:
             unique_shows.append(show)
         return unique_shows
 
-    @staticmethod
-    def _fingerprint(shows: list[DiscoveryItem]) -> str:
+    @classmethod
+    def _fingerprint(cls, shows: list[DiscoveryItem]) -> str:
         content = [
             {
                 "tmdb_id": show.tmdb_id,
@@ -118,6 +143,16 @@ class TrendingTvService:
                 "availability": TrendingTvView.status(show),
             }
             for show in shows
+        ]
+        content = [
+            {
+                **entry,
+                "details": details,
+            }
+            for entry, details in zip(
+                content,
+                DiscoveryDetailsView.selection_data(shows, cls.DASHBOARD_KEY),
+            )
         ]
         serialized = json.dumps(content, separators=(",", ":"), ensure_ascii=False)
         return hashlib.sha256(serialized.encode()).hexdigest()
@@ -132,11 +167,21 @@ class TrendingTvService:
             logger.warning("Failed to load trending TV state: %s", error)
             return None
 
-    def _save_state(self, fingerprint: str, message_id: int):
+    def _save_state(
+        self,
+        fingerprint: str,
+        message_id: int,
+        shows: list[DiscoveryItem],
+    ):
         self.state = TrendingMoviesState(
             fingerprint=fingerprint,
             message_id=message_id,
             updated_at=datetime.now(timezone.utc).isoformat(),
+            details_view_version=DiscoveryDetailsView.VERSION,
+            details_items=DiscoveryDetailsView.selections_from_items(
+                shows,
+                self.DASHBOARD_KEY,
+            ),
         )
         temporary_file = self.STATE_FILE.with_suffix(".tmp")
         try:

@@ -24,6 +24,7 @@ class DiscordService:
         self.client = discord.Client(
             intents=intents,
         )
+        self._registered_dashboard_view_ids = set()
 
         self.command_service = CommandService()
 
@@ -34,6 +35,14 @@ class DiscordService:
             logger.info(f"Environment : {Config.ENVIRONMENT.upper()}")
             logger.info(f"Discord Bot : {self.client.user}")
             logger.info("=" * 50)
+
+            for dashboard in (
+                services.trending_movies,
+                services.upcoming_movie_watchlist,
+                services.trending_tv,
+            ):
+                if dashboard is not None:
+                    self._register_dashboard_view(dashboard.details_view())
 
             if services.health_monitor:
                 services.health_monitor.start()
@@ -237,16 +246,31 @@ class DiscordService:
     async def send_trending_movies(
         self,
         embed: discord.Embed,
+        view: discord.ui.View | None = None,
     ) -> discord.Message:
         channel = self._get_trending_movies_channel()
+        self._register_dashboard_view(view)
 
-        return await channel.send(embed=embed)
+        return await channel.send(embed=embed, view=view)
 
-    async def send_upcoming_movies(self, embed: discord.Embed) -> discord.Message:
-        return await self._get_trending_movies_channel().send(embed=embed)
+    async def send_upcoming_movies(
+        self,
+        embed: discord.Embed,
+        view: discord.ui.View | None = None,
+    ) -> discord.Message:
+        self._register_dashboard_view(view)
+        return await self._get_trending_movies_channel().send(
+            embed=embed,
+            view=view,
+        )
 
-    async def send_trending_tv(self, embed: discord.Embed) -> discord.Message:
-        return await self._get_trending_tv_channel().send(embed=embed)
+    async def send_trending_tv(
+        self,
+        embed: discord.Embed,
+        view: discord.ui.View | None = None,
+    ) -> discord.Message:
+        self._register_dashboard_view(view)
+        return await self._get_trending_tv_channel().send(embed=embed, view=view)
 
     async def trending_movies_message_exists(
         self,
@@ -281,12 +305,14 @@ class DiscordService:
         self,
         message_id: int,
         embed: discord.Embed,
+        view: discord.ui.View | None = None,
     ) -> bool | None:
         channel = self._get_trending_movies_channel()
+        self._register_dashboard_view(view)
 
         try:
             message = await channel.fetch_message(message_id)
-            await message.edit(embed=embed)
+            await message.edit(embed=embed, view=view)
 
             return True
 
@@ -306,19 +332,22 @@ class DiscordService:
         self,
         message_id: int,
         embed: discord.Embed,
+        view: discord.ui.View | None = None,
     ) -> bool | None:
-        return await self.update_trending_movies(message_id, embed)
+        return await self.update_trending_movies(message_id, embed, view=view)
 
     async def update_trending_tv(
         self,
         message_id: int,
         embed: discord.Embed,
+        view: discord.ui.View | None = None,
     ) -> bool | None:
         channel = self._get_trending_tv_channel()
+        self._register_dashboard_view(view)
 
         try:
             message = await channel.fetch_message(message_id)
-            await message.edit(embed=embed)
+            await message.edit(embed=embed, view=view)
             return True
         except discord.NotFound:
             return False
@@ -327,6 +356,21 @@ class DiscordService:
                 "Unable to update trending TV message %s: %s", message_id, error
             )
             return None
+
+    def _register_dashboard_view(self, view: discord.ui.View | None) -> None:
+        if view is None:
+            return
+
+        if not hasattr(self, "_registered_dashboard_view_ids"):
+            self._registered_dashboard_view_ids = set()
+
+        registration_id = getattr(view, "registration_id", None)
+        if registration_id in self._registered_dashboard_view_ids:
+            return
+
+        self.client.add_view(view)
+        if registration_id is not None:
+            self._registered_dashboard_view_ids.add(registration_id)
 
     def _get_trending_movies_channel(self):
         channel_id = Config.DISCORD_TRENDING_MOVIES_CHANNEL_ID

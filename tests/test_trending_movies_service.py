@@ -18,21 +18,25 @@ from services.trending_movies_service import TrendingMoviesService
 class FakeDiscordService:
     def __init__(self):
         self.sent = []
+        self.sent_views = []
         self.updated = []
+        self.updated_views = []
         self.checked = []
         self.message_exists = True
         self.update_result = True
 
-    async def send_trending_movies(self, embed):
+    async def send_trending_movies(self, embed, view=None):
         self.sent.append(embed)
+        self.sent_views.append(view)
         return SimpleNamespace(id=100 + len(self.sent))
 
     async def trending_movies_message_exists(self, message_id):
         self.checked.append(message_id)
         return self.message_exists
 
-    async def update_trending_movies(self, message_id, embed):
+    async def update_trending_movies(self, message_id, embed, view=None):
         self.updated.append((message_id, embed))
+        self.updated_views.append(view)
         return self.update_result
 
 
@@ -104,6 +108,30 @@ class TrendingMoviesServiceTests(unittest.TestCase):
         self.assertEqual(self.discord.checked, [101])
         self.assertEqual(len(self.discord.sent), 1)
         self.assertEqual(self.discord.updated, [])
+
+    def test_existing_dashboard_without_details_view_is_upgraded(self):
+        service = self.create_service()
+        movies = self.movies()
+        self.state_file.write_text(
+            json.dumps(
+                {
+                    "fingerprint": service._fingerprint(movies),
+                    "message_id": 101,
+                    "updated_at": "2026-07-21T12:00:00+00:00",
+                }
+            )
+        )
+        service.state = service._load_state()
+
+        self.run_cycle(service, movies)
+
+        self.assertEqual(len(self.discord.sent), 0)
+        self.assertEqual(self.discord.updated[0][0], 101)
+        self.assertIsNotNone(self.discord.updated_views[0])
+        self.assertEqual(
+            service.state.details_view_version,
+            1,
+        )
 
     def test_changed_content_edits_existing_dashboard_message(self):
         service = self.create_service()

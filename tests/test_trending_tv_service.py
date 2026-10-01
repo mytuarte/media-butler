@@ -14,18 +14,22 @@ from services.trending_tv_service import TrendingTvService
 class FakeDiscordService:
     def __init__(self):
         self.sent = []
+        self.sent_views = []
         self.updated = []
+        self.updated_views = []
         self.message_exists = True
 
-    async def send_trending_tv(self, embed):
+    async def send_trending_tv(self, embed, view=None):
         self.sent.append(embed)
+        self.sent_views.append(view)
         return SimpleNamespace(id=100 + len(self.sent))
 
     async def trending_tv_message_exists(self, message_id):
         return self.message_exists
 
-    async def update_trending_tv(self, message_id, embed):
+    async def update_trending_tv(self, message_id, embed, view=None):
         self.updated.append((message_id, embed))
+        self.updated_views.append(view)
         return True
 
 

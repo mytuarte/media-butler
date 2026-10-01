@@ -10,6 +10,7 @@ from models.trending_movies_state import TrendingMoviesState
 from services.discovery.discovery_service import DiscoveryService
 from services.log_service import logger
 from services.registry import services
+from views.discovery_details_view import DiscoveryDetailsView
 from views.trending_movies_view import TrendingMoviesView
 
 
@@ -17,6 +18,7 @@ class TrendingMoviesService:
     STATE_FILE = Path("data/trending_movies.json")
     DASHBOARD_TITLE = TrendingMoviesView.TITLE
     DASHBOARD_MOVIE_LIMIT = 20
+    DASHBOARD_KEY = "trending_movies"
 
     def __init__(self):
         self.discovery = DiscoveryService()
@@ -73,6 +75,7 @@ class TrendingMoviesService:
             len(movies),
         )
         fingerprint = self._fingerprint(movies)
+        view = self._details_view(movies)
 
         if self.state is not None:
             message_exists = await services.discord.trending_movies_message_exists(
@@ -84,32 +87,52 @@ class TrendingMoviesService:
 
             if not message_exists:
                 embed = TrendingMoviesView.build(movies)
-                message = await services.discord.send_trending_movies(embed)
-                self._save_state(fingerprint, message.id)
+                message = await services.discord.send_trending_movies(
+                    embed,
+                    view=view,
+                )
+                self._save_state(fingerprint, message.id, movies)
                 return
 
-            if message_exists and self.state.fingerprint == fingerprint:
+            if (
+                message_exists
+                and self.state.fingerprint == fingerprint
+                and self.state.details_view_version >= DiscoveryDetailsView.VERSION
+            ):
                 return
 
         embed = TrendingMoviesView.build(movies)
 
         if self.state is None:
-            message = await services.discord.send_trending_movies(embed)
-            self._save_state(fingerprint, message.id)
+            message = await services.discord.send_trending_movies(embed, view=view)
+            self._save_state(fingerprint, message.id, movies)
             return
 
         updated = await services.discord.update_trending_movies(
             self.state.message_id,
             embed,
+            view=view,
         )
 
         if updated is True:
-            self._save_state(fingerprint, self.state.message_id)
+            self._save_state(fingerprint, self.state.message_id, movies)
             return
 
         if updated is False:
-            message = await services.discord.send_trending_movies(embed)
-            self._save_state(fingerprint, message.id)
+            message = await services.discord.send_trending_movies(embed, view=view)
+            self._save_state(fingerprint, message.id, movies)
+
+    def details_view(self):
+        if self.state is None:
+            return None
+        return DiscoveryDetailsView.from_selections(
+            self.state.details_items,
+            self.DASHBOARD_KEY,
+        )
+
+    @classmethod
+    def _details_view(cls, movies: list[DiscoveryItem]):
+        return DiscoveryDetailsView.from_items(movies, cls.DASHBOARD_KEY)
 
     @staticmethod
     def _deduplicate_by_tmdb_id(
@@ -128,8 +151,8 @@ class TrendingMoviesService:
 
         return unique_movies
 
-    @staticmethod
-    def _fingerprint(movies: list[DiscoveryItem]) -> str:
+    @classmethod
+    def _fingerprint(cls, movies: list[DiscoveryItem]) -> str:
         content = [
             {
                 "tmdb_id": movie.tmdb_id,
@@ -137,6 +160,16 @@ class TrendingMoviesService:
                 "availability": TrendingMoviesView.status(movie),
             }
             for movie in movies
+        ]
+        content = [
+            {
+                **entry,
+                "details": details,
+            }
+            for entry, details in zip(
+                content,
+                DiscoveryDetailsView.selection_data(movies, cls.DASHBOARD_KEY),
+            )
         ]
         serialized = json.dumps(
             content,
@@ -161,11 +194,17 @@ class TrendingMoviesService:
         self,
         fingerprint: str,
         message_id: int,
+        movies: list[DiscoveryItem],
     ):
         self.state = TrendingMoviesState(
             fingerprint=fingerprint,
             message_id=message_id,
             updated_at=datetime.now(timezone.utc).isoformat(),
+            details_view_version=DiscoveryDetailsView.VERSION,
+            details_items=DiscoveryDetailsView.selections_from_items(
+                movies,
+                self.DASHBOARD_KEY,
+            ),
         )
         temporary_file = self.STATE_FILE.with_suffix(".tmp")
 

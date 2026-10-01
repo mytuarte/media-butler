@@ -10,6 +10,7 @@ from models.upcoming_movies_state import UpcomingMoviesState
 from services.discovery.discovery_service import DiscoveryService
 from services.log_service import logger
 from services.registry import services
+from views.discovery_details_view import DiscoveryDetailsView
 from views.media_list_view import MediaListView
 
 
@@ -19,6 +20,7 @@ class UpcomingMovieWatchlistService:
     STATE_FILE = Path("data/upcoming_movies.json")
     LEGACY_STATE_FILE = Path("data/trending_movies.json")
     DASHBOARD_TITLE = "🎬 Upcoming Movie Watchlist"
+    DASHBOARD_KEY = "upcoming_movies"
 
     def __init__(self):
         self._migrate_legacy_state()
@@ -60,6 +62,7 @@ class UpcomingMovieWatchlistService:
             return
         movies = await asyncio.to_thread(self.discovery.get_trending_movies)
         fingerprint = self._fingerprint(movies)
+        view = self._details_view(movies)
         if self.state is not None:
             exists = await services.discord.upcoming_movies_message_exists(
                 self.state.message_id
@@ -68,37 +71,64 @@ class UpcomingMovieWatchlistService:
                 return
             if not exists:
                 message = await services.discord.send_upcoming_movies(
-                    self._embed(movies)
+                    self._embed(movies),
+                    view=view,
                 )
-                self._save_state(fingerprint, message.id)
+                self._save_state(fingerprint, message.id, movies)
                 return
-            if self.state.fingerprint == fingerprint:
+            if (
+                self.state.fingerprint == fingerprint
+                and self.state.details_view_version >= DiscoveryDetailsView.VERSION
+            ):
                 return
         if self.state is None:
-            message = await services.discord.send_upcoming_movies(self._embed(movies))
-            self._save_state(fingerprint, message.id)
+            message = await services.discord.send_upcoming_movies(
+                self._embed(movies),
+                view=view,
+            )
+            self._save_state(fingerprint, message.id, movies)
             return
         updated = await services.discord.update_upcoming_movies(
             self.state.message_id,
             self._embed(movies),
+            view=view,
         )
         if updated is True:
-            self._save_state(fingerprint, self.state.message_id)
+            self._save_state(fingerprint, self.state.message_id, movies)
         elif updated is False:
-            message = await services.discord.send_upcoming_movies(self._embed(movies))
-            self._save_state(fingerprint, message.id)
+            message = await services.discord.send_upcoming_movies(
+                self._embed(movies),
+                view=view,
+            )
+            self._save_state(fingerprint, message.id, movies)
+
+    def details_view(self):
+        if self.state is None:
+            return None
+        return DiscoveryDetailsView.from_selections(
+            self.state.details_items,
+            self.DASHBOARD_KEY,
+        )
+
+    @classmethod
+    def _details_view(cls, movies: list[DiscoveryItem]):
+        return DiscoveryDetailsView.from_items(movies, cls.DASHBOARD_KEY)
 
     def _embed(self, movies):
         return MediaListView.build(self.DASHBOARD_TITLE, movies)
 
-    @staticmethod
-    def _fingerprint(movies: list[DiscoveryItem]) -> str:
+    @classmethod
+    def _fingerprint(cls, movies: list[DiscoveryItem]) -> str:
         content = [
             {
                 "tmdb_id": movie.tmdb_id,
                 "title": movie.title,
                 "monitoring_state": movie.monitoring_state.name,
                 "status_detail": movie.status_detail,
+                "release_status": DiscoveryDetailsView.selection_data(
+                    [movie],
+                    cls.DASHBOARD_KEY,
+                )[0]["release_status"],
             }
             for movie in movies
         ]
@@ -120,11 +150,21 @@ class UpcomingMovieWatchlistService:
             logger.warning("Failed to load upcoming movies state: %s", error)
             return None
 
-    def _save_state(self, fingerprint: str, message_id: int):
+    def _save_state(
+        self,
+        fingerprint: str,
+        message_id: int,
+        movies: list[DiscoveryItem],
+    ):
         self.state = UpcomingMoviesState(
-            fingerprint,
-            message_id,
-            datetime.now(timezone.utc).isoformat(),
+            fingerprint=fingerprint,
+            message_id=message_id,
+            updated_at=datetime.now(timezone.utc).isoformat(),
+            details_view_version=DiscoveryDetailsView.VERSION,
+            details_items=DiscoveryDetailsView.selections_from_items(
+                movies,
+                self.DASHBOARD_KEY,
+            ),
         )
         temporary_file = self.STATE_FILE.with_suffix(".tmp")
         try:
